@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Menu</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 min-h-screen">
+
+  <!-- Header -->
+  <header class="bg-white shadow-sm sticky top-0 z-10">
+    <div class="max-w-3xl mx-auto px-4 py-4 flex items-center justify-between">
+      <div>
+        <h1 id="restaurant-name" class="text-xl font-bold text-gray-900">Loading…</h1>
+        <p id="table-label" class="text-sm text-gray-500"></p>
+      </div>
+      <button onclick="openCart()" class="relative p-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-full transition-colors">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M3 3h2l.4 2M7 13h10l4-10H5.4M7 13l-1.5 6h13M7 13H5.4M10 19a1 1 0 100 2 1 1 0 000-2zm7 0a1 1 0 100 2 1 1 0 000-2z"/>
+        </svg>
+        <span id="cart-badge"
+          class="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center hidden">
+          0
+        </span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Category tabs -->
+  <div class="bg-white border-b sticky top-[68px] z-10">
+    <div class="max-w-3xl mx-auto px-4">
+      <div id="category-tabs" class="flex gap-1 overflow-x-auto py-2 scrollbar-hide"></div>
+    </div>
+  </div>
+
+  <!-- Menu content -->
+  <main class="max-w-3xl mx-auto px-4 py-6">
+    <div id="menu-error" class="hidden bg-red-100 border border-red-200 text-red-700 rounded-lg p-4 mb-4"></div>
+    <div id="menu-content" class="space-y-8"></div>
+  </main>
+
+  <!-- Cart overlay -->
+  <div id="cart-overlay" class="fixed inset-0 bg-black/40 z-20 hidden" onclick="closeCart()"></div>
+
+  <!-- Cart drawer -->
+  <aside id="cart-drawer"
+    class="fixed right-0 top-0 h-full w-full max-w-sm bg-white shadow-2xl z-30 translate-x-full transition-transform duration-300 flex flex-col">
+    <div class="flex items-center justify-between px-4 py-4 border-b">
+      <h2 class="text-lg font-bold">Your Order</h2>
+      <button onclick="closeCart()" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+    </div>
+    <div id="cart-items" class="flex-1 overflow-y-auto px-4 py-3 space-y-3"></div>
+    <div class="px-4 py-4 border-t space-y-3 bg-white">
+      <div class="flex justify-between text-base font-bold">
+        <span>Total</span>
+        <span id="cart-total">$0.00</span>
+      </div>
+      <input id="phone-input" type="tel" placeholder="Phone number (optional — for loyalty points)"
+        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400" />
+      <button id="order-btn" onclick="submitOrder()"
+        class="w-full bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white font-semibold py-3 rounded-xl transition-colors">
+        Place Order
+      </button>
+      <p id="order-error" class="text-red-600 text-sm hidden"></p>
+    </div>
+  </aside>
+
+  <!-- Success modal -->
+  <div id="success-modal" class="fixed inset-0 bg-black/50 z-40 hidden items-center justify-center p-4 flex">
+    <div class="bg-white rounded-2xl p-6 max-w-xs w-full text-center shadow-xl">
+      <div class="w-14 h-14 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
+        <svg class="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
+        </svg>
+      </div>
+      <h2 class="text-xl font-bold mb-1">Order placed!</h2>
+      <p class="text-gray-500 text-sm mb-1">
+        Order <span id="success-order-id" class="font-mono font-bold text-gray-800"></span>
+      </p>
+      <p class="text-gray-400 text-xs mb-5">We'll start preparing your order shortly.</p>
+      <button onclick="dismissSuccess()"
+        class="bg-amber-500 hover:bg-amber-600 text-white px-8 py-2 rounded-xl font-semibold transition-colors">
+        OK
+      </button>
+    </div>
+  </div>
+
+<script>
+// ─── state ─────────────────────────────────────────────────────────────────
+const state = {
+  tableToken: new URLSearchParams(location.search).get('table') || '',
+  menuData: null,   // full API response
+  cart: {},         // { id: { name, price, qty } }
+};
+
+const CATEGORY_ORDER  = ['food', 'drink', 'dessert'];
+const CATEGORY_LABELS = { food: 'Food', drink: 'Drinks', dessert: 'Desserts' };
+
+// ─── CSRF ───────────────────────────────────────────────────────────────────
+function getCsrfToken() {
+  const match = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
+  return match ? match[1] : '';
+}
+
+// ─── init ───────────────────────────────────────────────────────────────────
+async function init() {
+  if (!state.tableToken) {
+    showError('No table token found in URL. Please scan the QR code again.');
+    return;
+  }
+  try {
+    const res = await fetch(`/api/menu/?table=${encodeURIComponent(state.tableToken)}`);
+    const data = await res.json();
+    if (!res.ok) {
+      showError(data.error || 'Failed to load the menu.');
+      return;
+    }
+    state.menuData = data;
+    renderPage(data);
+  } catch {
+    showError('Could not connect to the server. Please try again.');
+  }
+}
+
+function showError(msg) {
+  const el = document.getElementById('menu-error');
+  el.textContent = msg;
+  el.classList.remove('hidden');
+  document.getElementById('restaurant-name').textContent = 'Error';
+}
+
+// ─── render page ────────────────────────────────────────────────────────────
+function renderPage(data) {
+  document.getElementById('restaurant-name').textContent = data.restaurant.name;
+  document.getElementById('table-label').textContent     = `Table ${data.table.number}`;
+  document.title = data.restaurant.name;
+
+  const categories = CATEGORY_ORDER.filter(c => data.menu[c]?.length);
+
+  // tabs
+  const tabsEl = document.getElementById('category-tabs');
+  categories.forEach((cat, i) => {
+    const btn = document.createElement('button');
+    btn.id        = `tab-${cat}`;
+    btn.textContent = CATEGORY_LABELS[cat];
+    btn.className = tabClass(i === 0);
+    btn.onclick   = () => scrollToCategory(cat);
+    tabsEl.appendChild(btn);
+  });
+
+  // sections
+  const contentEl = document.getElementById('menu-content');
+  categories.forEach(cat => {
+    const section = document.createElement('section');
+    section.id    = `cat-${cat}`;
+
+    const heading = document.createElement('h2');
+    heading.className   = 'text-lg font-bold text-gray-800 mb-3';
+    heading.textContent = CATEGORY_LABELS[cat];
+    section.appendChild(heading);
+
+    const grid = document.createElement('div');
+    grid.className = 'grid gap-3 sm:grid-cols-2';
+    data.menu[cat].forEach(item => grid.appendChild(buildItemCard(item)));
+    section.appendChild(grid);
+
+    contentEl.appendChild(section);
+  });
+}
+
+function tabClass(active) {
+  const base = 'px-4 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-colors';
+  return active
+    ? `${base} bg-amber-500 text-white`
+    : `${base} text-gray-600 hover:bg-gray-100`;
+}
+
+// ─── item card ──────────────────────────────────────────────────────────────
+function buildItemCard(item) {
+  const card = document.createElement('div');
+  card.className = 'bg-white rounded-xl p-4 shadow-sm flex justify-between items-start gap-3';
+
+  const info = document.createElement('div');
+  info.className = 'flex-1 min-w-0';
+  info.innerHTML = `
+    <p class="font-semibold text-gray-900">${esc(item.name)}</p>
+    ${item.description ? `<p class="text-xs text-gray-500 mt-0.5 line-clamp-2">${esc(item.description)}</p>` : ''}
+    <p class="text-amber-600 font-bold mt-1">$${parseFloat(item.price).toFixed(2)}</p>
+  `;
+
+  const ctrl = document.createElement('div');
+  ctrl.id        = `ctrl-${item.id}`;
+  ctrl.className = 'flex-shrink-0';
+
+  card.appendChild(info);
+  card.appendChild(ctrl);
+
+  // pass ctrl directly — card isn't in the DOM yet so getElementById would return null
+  renderControls(item.id, item.name, parseFloat(item.price), ctrl);
+  return card;
+}
+
+function renderControls(id, name, price, el) {
+  const ctrl = el || document.getElementById(`ctrl-${id}`);
+  if (!ctrl) return;
+  const qty = state.cart[id]?.qty || 0;
+  ctrl.innerHTML = '';
+
+  if (qty === 0) {
+    const btn = document.createElement('button');
+    btn.className = 'bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold px-3 py-1.5 rounded-lg transition-colors';
+    btn.textContent = 'Add';
+    btn.addEventListener('click', () => addToCart(id, name, price));
+    ctrl.appendChild(btn);
+  } else {
+    const wrap = document.createElement('div');
+    wrap.className = 'flex items-center gap-2';
+
+    const minus = document.createElement('button');
+    minus.className = 'w-7 h-7 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold flex items-center justify-center';
+    minus.textContent = '−';
+    minus.addEventListener('click', () => changeQty(id, -1));
+
+    const countEl = document.createElement('span');
+    countEl.className = 'font-bold text-gray-900 w-4 text-center';
+    countEl.textContent = qty;
+
+    const plus = document.createElement('button');
+    plus.className = 'w-7 h-7 rounded-full bg-amber-500 hover:bg-amber-600 text-white font-bold flex items-center justify-center';
+    plus.textContent = '+';
+    plus.addEventListener('click', () => changeQty(id, 1));
+
+    wrap.append(minus, countEl, plus);
+    ctrl.appendChild(wrap);
+  }
+}
+
+// ─── cart logic ─────────────────────────────────────────────────────────────
+function addToCart(id, name, price) {
+  state.cart[id] = { name, price, qty: 1 };
+  afterCartChange(id, name, price);
+}
+
+function changeQty(id, delta) {
+  if (!state.cart[id]) return;
+  state.cart[id].qty += delta;
+  const { name, price } = state.cart[id];
+  if (state.cart[id].qty <= 0) delete state.cart[id];
+  afterCartChange(id, name, price);
+}
+
+function afterCartChange(id, name, price) {
+  renderControls(id, name, price);
+  renderCartItems();
+  updateCartBadge();
+}
+
+function updateCartBadge() {
+  const count = Object.values(state.cart).reduce((s, i) => s + i.qty, 0);
+  const badge = document.getElementById('cart-badge');
+  badge.textContent = count;
+  badge.classList.toggle('hidden', count === 0);
+}
+
+// ─── cart drawer ────────────────────────────────────────────────────────────
+function openCart() {
+  renderCartItems();
+  document.getElementById('cart-overlay').classList.remove('hidden');
+  document.getElementById('cart-drawer').classList.remove('translate-x-full');
+}
+
+function closeCart() {
+  document.getElementById('cart-overlay').classList.add('hidden');
+  document.getElementById('cart-drawer').classList.add('translate-x-full');
+}
+
+function renderCartItems() {
+  const entries = Object.entries(state.cart);
+  const el      = document.getElementById('cart-items');
+
+  if (entries.length === 0) {
+    el.innerHTML = '<p class="text-gray-400 text-center py-10">Your cart is empty</p>';
+    document.getElementById('cart-total').textContent = '$0.00';
+    return;
+  }
+
+  let total = 0;
+  el.innerHTML = entries.map(([id, item]) => {
+    const sub = item.price * item.qty;
+    total += sub;
+    return `
+      <div class="flex items-center gap-2">
+        <div class="flex-1 min-w-0">
+          <p class="text-sm font-medium text-gray-900 truncate">${esc(item.name)}</p>
+          <p class="text-xs text-gray-400">$${item.price.toFixed(2)} &times; ${item.qty}</p>
+        </div>
+        <div class="flex items-center gap-1.5">
+          <button onclick="changeQty(${id}, -1)"
+            class="w-6 h-6 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold flex items-center justify-center">
+            &minus;
+          </button>
+          <span class="w-4 text-center text-sm font-bold">${item.qty}</span>
+          <button onclick="changeQty(${id}, 1)"
+            class="w-6 h-6 rounded-full bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold flex items-center justify-center">
+            +
+          </button>
+        </div>
+        <span class="text-sm font-bold text-gray-900 w-12 text-right">$${sub.toFixed(2)}</span>
+      </div>`;
+  }).join('');
+
+  document.getElementById('cart-total').textContent = `$${total.toFixed(2)}`;
+}
+
+// ─── submit order ────────────────────────────────────────────────────────────
+async function submitOrder() {
+  const entries = Object.entries(state.cart);
+  if (entries.length === 0) return;
+
+  const btn    = document.getElementById('order-btn');
+  const errEl  = document.getElementById('order-error');
+  btn.disabled = true;
+  btn.textContent = 'Placing order…';
+  errEl.classList.add('hidden');
+
+  const phone   = document.getElementById('phone-input').value.trim();
+  const payload = {
+    table: state.tableToken,
+    items: entries.map(([id, item]) => ({
+      menu_item_id: parseInt(id),
+      quantity: item.qty,
+    })),
+  };
+  if (phone) payload.phone = phone;
+
+  try {
+    const res  = await fetch('/api/orders/', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': getCsrfToken(),
+      },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      errEl.textContent = extractError(data);
+      errEl.classList.remove('hidden');
+      return;
+    }
+
+    // success — reset cart and show confirmation
+    closeCart();
+    state.cart = {};
+    updateCartBadge();
+    resetAllControls();
+    document.getElementById('phone-input').value = '';
+    document.getElementById('success-order-id').textContent = `#${data.order_id}`;
+    document.getElementById('success-modal').classList.remove('hidden');
+
+  } catch {
+    errEl.textContent = 'Could not connect. Please try again.';
+    errEl.classList.remove('hidden');
+  } finally {
+    btn.disabled    = false;
+    btn.textContent = 'Place Order';
+  }
+}
+
+function resetAllControls() {
+  if (!state.menuData) return;
+  Object.values(state.menuData.menu).flat().forEach(item =>
+    renderControls(item.id, item.name, parseFloat(item.price))
+  );
+}
+
+function extractError(data) {
+  if (typeof data === 'string') return data;
+  if (data.error)               return data.error;
+  const key = Object.keys(data)[0];
+  const val = data[key];
+  return Array.isArray(val) ? `${key}: ${val[0]}` : JSON.stringify(data);
+}
+
+function dismissSuccess() {
+  document.getElementById('success-modal').classList.add('hidden');
+}
+
+// ─── category scroll / tab highlight ────────────────────────────────────────
+function scrollToCategory(cat) {
+  document.getElementById(`cat-${cat}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  document.querySelectorAll('[id^="tab-"]').forEach(btn => {
+    const active = btn.id === `tab-${cat}`;
+    btn.className = tabClass(active);
+  });
+}
+
+// ─── util ────────────────────────────────────────────────────────────────────
+function esc(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+// ─── boot ────────────────────────────────────────────────────────────────────
+init();
+</script>
+</body>
+</html>
