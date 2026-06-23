@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Restaurant, Table, MenuItem, Customer, Order, OrderItem, Review
+from .models import Restaurant, Table, MenuItem, Customer, Order, OrderItem, Review, StaffPasscode
 
 
 @admin.register(Restaurant)
@@ -24,15 +24,15 @@ class MenuItemAdmin(admin.ModelAdmin):
 
 @admin.register(Customer)
 class CustomerAdmin(admin.ModelAdmin):
-    list_display = ['phone', 'loyalty_points']
+    list_display = ['phone', 'loyalty_points', 'total_spent']
     search_fields = ['phone']
 
 
 @admin.register(Order)
 class OrderAdmin(admin.ModelAdmin):
-    list_display = ['id', 'table', 'customer', 'created_at']
-    list_filter = ['table__restaurant']
-    readonly_fields = ['created_at']
+    list_display    = ['id', 'table', 'customer', 'created_at', 'loyalty_awarded']
+    list_filter     = ['table__restaurant']
+    readonly_fields = ['created_at', 'loyalty_awarded']
 
 
 @admin.register(OrderItem)
@@ -46,3 +46,8 @@ class OrderItemAdmin(admin.ModelAdmin):
 class ReviewAdmin(admin.ModelAdmin):
     list_display = ['order', 'rating', 'created_at']
     readonly_fields = ['created_at']
+
+
+@admin.register(StaffPasscode)
+class StaffPasscodeAdmin(admin.ModelAdmin):
+    list_display = ['role', 'passcode']

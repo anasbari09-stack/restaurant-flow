@@ -33,6 +33,20 @@
       <div id="items-list" class="space-y-2"></div>
     </section>
 
+    <!-- Other active orders at this table -->
+    <section id="other-orders-section" class="hidden">
+      <h2 class="text-base font-semibold text-gray-700 mb-3">Other active orders at this table</h2>
+      <div id="other-orders-list" class="space-y-2"></div>
+    </section>
+
+    <!-- Order more -->
+    <div id="order-more-wrap" class="hidden">
+      <a id="order-more-link" href="#"
+        class="block w-full text-center bg-amber-500 hover:bg-amber-600 text-white font-semibold py-3 rounded-xl transition-colors">
+        + Order more items
+      </a>
+    </div>
+
     <!-- Footer note -->
     <p id="footer-note" class="text-center text-xs text-gray-400 pb-4"></p>
 
@@ -47,7 +61,8 @@ const STATUS_STYLE = {
 };
 
 const orderId = window.location.pathname.split('/').filter(Boolean).pop();
-let pollTimer = null;
+let tableToken = null;
+let pollTimer  = null;
 
 async function fetchStatus() {
   try {
@@ -61,6 +76,15 @@ async function fetchStatus() {
     if (data.status === 'SERVED') {
       clearInterval(pollTimer);
       pollTimer = null;
+    }
+    if (data.table_token) {
+      tableToken = data.table_token;
+      const link = document.getElementById('order-more-link');
+      if (link.getAttribute('href') === '#') {
+        link.href = `/menu/?table=${data.table_token}`;
+        document.getElementById('order-more-wrap').classList.remove('hidden');
+      }
+      fetchSiblingOrders();
     }
   } catch {
     // network hiccup — keep polling, don't clear UI
@@ -103,6 +127,41 @@ function renderOrder(data) {
   note.textContent = data.status === 'SERVED'
     ? 'Your order is complete! Thank you for dining with us.'
     : 'This page updates automatically every 6 seconds.';
+}
+
+async function fetchSiblingOrders() {
+  if (!tableToken) return;
+  try {
+    const res  = await fetch(`/api/orders/?table=${encodeURIComponent(tableToken)}`);
+    const data = await res.json();
+    if (!res.ok) return;
+    renderSiblingOrders(data);
+  } catch {}
+}
+
+function renderSiblingOrders(orders) {
+  const others  = orders.filter(o => String(o.id) !== String(orderId));
+  const section = document.getElementById('other-orders-section');
+  const list    = document.getElementById('other-orders-list');
+
+  if (others.length === 0) {
+    section.classList.add('hidden');
+    return;
+  }
+  section.classList.remove('hidden');
+  list.innerHTML = '';
+  others.forEach(o => {
+    const s = STATUS_STYLE[o.status] || STATUS_STYLE.NEW;
+    const a = document.createElement('a');
+    a.href      = `/order/${o.id}/`;
+    a.className = 'flex items-center justify-between bg-white rounded-xl px-4 py-3 shadow-sm hover:shadow-md transition-shadow';
+    a.innerHTML = `
+      <span class="text-sm font-medium text-gray-900">Order #${o.id}
+        <span class="text-gray-400">&middot; ${o.item_count} item${o.item_count !== 1 ? 's' : ''}</span>
+      </span>
+      <span class="text-xs font-semibold px-2.5 py-1 rounded-full ${s.chip}">${s.label}</span>`;
+    list.appendChild(a);
+  });
 }
 
 function showFetchError(msg) {

@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Staff Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 min-h-screen">
+
+  <!-- Header -->
+  <header class="bg-gray-900 text-white sticky top-0 z-10">
+    <div class="max-w-2xl mx-auto px-4 py-4 flex items-center justify-between">
+      <div>
+        <h1 id="station-title" class="text-lg font-bold capitalize"></h1>
+        <p class="text-xs text-gray-400">Staff Dashboard</p>
+      </div>
+      <button onclick="logout()"
+        class="text-xs text-gray-400 hover:text-white border border-gray-600 hover:border-gray-400 px-3 py-1.5 rounded-lg transition-colors">
+        Log out
+      </button>
+    </div>
+  </header>
+
+  <main class="max-w-2xl mx-auto px-4 py-6">
+
+    <!-- Admin placeholder -->
+    <div id="admin-placeholder" class="hidden bg-white rounded-2xl p-8 text-center shadow-sm">
+      <p class="text-3xl mb-3">🔧</p>
+      <h2 class="text-lg font-bold text-gray-900 mb-2">Admin Dashboard</h2>
+      <p class="text-gray-500 text-sm mb-4">Stats and full order management are coming in Day 3.</p>
+      <a href="/admin/" class="inline-block bg-gray-900 hover:bg-gray-700 text-white text-sm font-semibold px-5 py-2 rounded-xl transition-colors">
+        Open Django Admin →
+      </a>
+    </div>
+
+    <!-- Live items -->
+    <div id="station-view" class="hidden space-y-3">
+      <div id="items-container"></div>
+    </div>
+
+  </main>
+
+<script>
+const ROLE_LABELS = { kitchen: 'Kitchen', drinks: 'Drinks', dessert: 'Dessert', admin: 'Admin' };
+
+const CARD_STYLE = {
+  NEW:       { card: 'bg-white border border-gray-100',        badge: 'bg-blue-100 text-blue-700',   badgeText: 'New' },
+  PREPARING: { card: 'bg-white border border-amber-100',       badge: 'bg-amber-100 text-amber-700', badgeText: 'Preparing' },
+  READY:     { card: 'bg-gray-50 border border-gray-200',      badge: 'bg-green-100 text-green-700', badgeText: 'Ready' },
+};
+
+const BTN_STYLE = {
+  NEW:       { label: 'Start Preparing', cls: 'bg-blue-600 hover:bg-blue-700 text-white' },
+  PREPARING: { label: 'Mark Ready',      cls: 'bg-amber-500 hover:bg-amber-600 text-white' },
+  READY:     { label: 'Mark Served',     cls: 'bg-gray-300 hover:bg-gray-400 text-gray-700' },
+};
+
+const role = window.location.pathname.split('/').filter(Boolean)[1] || '';
+let pollTimer = null;
+
+function getCsrfToken() {
+  const match = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
+  return match ? match[1] : '';
+}
+
+function init() {
+  const label = ROLE_LABELS[role] || role;
+  document.getElementById('station-title').textContent = label + ' Station';
+  document.title = label + ' — Staff';
+
+  if (role === 'admin') {
+    document.getElementById('admin-placeholder').classList.remove('hidden');
+    return;
+  }
+
+  document.getElementById('station-view').classList.remove('hidden');
+  fetchItems();
+  pollTimer = setInterval(fetchItems, 6000);
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      clearInterval(pollTimer);
+      pollTimer = null;
+    } else {
+      fetchItems();
+      pollTimer = setInterval(fetchItems, 6000);
+    }
+  });
+}
+
+async function fetchItems() {
+  try {
+    const res  = await fetch(`/api/staff/order-items/?station=${encodeURIComponent(role)}`);
+    if (res.status === 401) {
+      window.location.href = '/staff/login/';
+      return;
+    }
+    const data = await res.json();
+    if (!res.ok) return;
+    renderItems(data);
+  } catch {
+    // network hiccup — keep showing last render
+  }
+}
+
+function renderItems(items) {
+  const container = document.getElementById('items-container');
+  if (items.length === 0) {
+    container.innerHTML = '<p class="text-center text-gray-400 py-16">No active items right now.</p>';
+    return;
+  }
+
+  container.innerHTML = '';
+  items.forEach(item => {
+    const s   = CARD_STYLE[item.status] || CARD_STYLE.NEW;
+    const btn = BTN_STYLE[item.status]  || BTN_STYLE.NEW;
+
+    const card = document.createElement('div');
+    card.className = `rounded-xl px-4 py-3 shadow-sm flex items-center gap-3 ${s.card}`;
+
+    // info block
+    const info = document.createElement('div');
+    info.className = 'flex-1 min-w-0';
+    info.innerHTML = `
+      <div class="flex items-center gap-2 flex-wrap">
+        <span class="font-semibold text-gray-900">${esc(item.name)}</span>
+        <span class="text-xs font-semibold px-2 py-0.5 rounded-full ${s.badge}">${s.badgeText}</span>
+      </div>
+      <p class="text-sm text-gray-500 mt-0.5">
+        &times;${item.quantity}
+        ${item.notes ? `&nbsp;·&nbsp;<span class="italic">${esc(item.notes)}</span>` : ''}
+      </p>
+      <p class="text-xs text-gray-400 mt-0.5">Table ${item.table_number} &nbsp;·&nbsp; Order #${item.order_id}</p>`;
+
+    // advance button
+    const advBtn = document.createElement('button');
+    advBtn.className = `flex-shrink-0 text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors ${btn.cls}`;
+    advBtn.textContent = btn.label;
+    advBtn.addEventListener('click', () => advanceItem(item.id, advBtn));
+
+    card.appendChild(info);
+    card.appendChild(advBtn);
+    container.appendChild(card);
+  });
+}
+
+async function advanceItem(id, btn) {
+  btn.disabled = true;
+  try {
+    const res = await fetch(`/api/staff/order-items/${id}/`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
+      body: JSON.stringify({}),
+    });
+    if (res.status === 401) {
+      window.location.href = '/staff/login/';
+      return;
+    }
+  } catch {
+    // ignore — polling will resync
+  } finally {
+    btn.disabled = false;
+  }
+  fetchItems();
+}
+
+async function logout() {
+  try {
+    await fetch('/api/staff/logout/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
+      body: JSON.stringify({}),
+    });
+  } catch {}
+  window.location.href = '/staff/login/';
+}
+
+function esc(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+init();
+</script>
+</body>
+</html>

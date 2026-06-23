@@ -8,6 +8,16 @@ class MenuItemSerializer(serializers.ModelSerializer):
         fields = ['id', 'name', 'description', 'price', 'category']
 
 
+class OrderItemStationSerializer(serializers.ModelSerializer):
+    name         = serializers.CharField(source='menu_item.name')
+    table_number = serializers.IntegerField(source='order.table.number')
+    order_id     = serializers.IntegerField(source='order.id')
+
+    class Meta:
+        model  = OrderItem
+        fields = ['id', 'name', 'quantity', 'notes', 'status', 'table_number', 'order_id']
+
+
 class OrderItemDetailSerializer(serializers.ModelSerializer):
     name = serializers.CharField(source='menu_item.name')
 
@@ -17,14 +27,16 @@ class OrderItemDetailSerializer(serializers.ModelSerializer):
 
 
 class OrderDetailSerializer(serializers.ModelSerializer):
-    items = OrderItemDetailSerializer(many=True)
-    table_number = serializers.IntegerField(source='table.number')
+    items           = OrderItemDetailSerializer(many=True)
+    table_number    = serializers.IntegerField(source='table.number')
+    table_token     = serializers.UUIDField(source='table.qr_token')
     restaurant_name = serializers.CharField(source='table.restaurant.name')
-    status = serializers.CharField(read_only=True)  # @property on Order
+    status          = serializers.CharField(read_only=True)  # @property on Order
 
     class Meta:
-        model = Order
-        fields = ['id', 'status', 'created_at', 'table_number', 'restaurant_name', 'items']
+        model  = Order
+        fields = ['id', 'status', 'created_at', 'table_number', 'table_token',
+                  'restaurant_name', 'items']
 
 
 class OrderItemInputSerializer(serializers.Serializer):

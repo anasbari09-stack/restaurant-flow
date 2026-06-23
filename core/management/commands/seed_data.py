@@ -1,5 +1,5 @@
 from django.core.management.base import BaseCommand
-from core.models import Restaurant, Table, MenuItem
+from core.models import Restaurant, Table, MenuItem, StaffPasscode
 
 
 class Command(BaseCommand):
@@ -40,7 +40,18 @@ class Command(BaseCommand):
                 defaults={'category': category, 'price': price, 'description': description},
             )
 
+        passcodes = [
+            ('kitchen', '1111'),
+            ('drinks',  '2222'),
+            ('dessert', '3333'),
+            ('admin',   '4444'),
+        ]
+        for role, code in passcodes:
+            StaffPasscode.objects.get_or_create(role=role, defaults={'passcode': code})
+        self.stdout.write('Staff passcodes ready (kitchen=1111, drinks=2222, dessert=3333, admin=4444)')
+
         self.stdout.write(self.style.SUCCESS('\nSeed complete. Table QR tokens:'))
         for table in Table.objects.filter(restaurant=restaurant).order_by('number'):
             self.stdout.write(f'  Table {table.number}: {table.qr_token}')
         self.stdout.write('\nOpen: http://127.0.0.1:8000/menu/?table=<token>')
+        self.stdout.write('Staff login: http://127.0.0.1:8000/staff/login/')

@@ -43,8 +43,9 @@ class MenuItem(models.Model):
 
 
 class Customer(models.Model):
-    phone = models.CharField(max_length=20, unique=True)
+    phone          = models.CharField(max_length=20, unique=True)
     loyalty_points = models.PositiveIntegerField(default=0)
+    total_spent    = models.DecimalField(max_digits=10, decimal_places=2, default=0)
 
     def __str__(self):
         return self.phone
@@ -55,7 +56,13 @@ class Order(models.Model):
     customer = models.ForeignKey(
         Customer, on_delete=models.SET_NULL, null=True, blank=True, related_name='orders'
     )
-    created_at = models.DateTimeField(auto_now_add=True)
+    created_at      = models.DateTimeField(auto_now_add=True)
+    loyalty_awarded = models.BooleanField(default=False)
+
+    @property
+    def total_amount(self):
+        return sum(i.menu_item.price * i.quantity
+                   for i in self.items.select_related('menu_item').all())
 
     @property
     def status(self):
@@ -89,6 +96,20 @@ class OrderItem(models.Model):
 
     def __str__(self):
         return f'{self.quantity}× {self.menu_item.name} [{self.status}]'
+
+
+class StaffPasscode(models.Model):
+    ROLE_CHOICES = [
+        ('kitchen', 'Kitchen'),
+        ('drinks', 'Drinks'),
+        ('dessert', 'Dessert'),
+        ('admin', 'Admin'),
+    ]
+    role = models.CharField(max_length=10, choices=ROLE_CHOICES, unique=True)
+    passcode = models.CharField(max_length=4, unique=True)
+
+    def __str__(self):
+        return f'{self.role} ({self.passcode})'
 
 
 class Review(models.Model):

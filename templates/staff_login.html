@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Staff Login</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900 min-h-screen flex items-center justify-center p-4">
+
+  <div class="bg-white rounded-2xl shadow-xl p-8 w-full max-w-xs text-center">
+    <div class="w-14 h-14 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4">
+      <svg class="w-7 h-7 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+          d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+      </svg>
+    </div>
+    <h1 class="text-xl font-bold text-gray-900 mb-1">Staff Login</h1>
+    <p class="text-sm text-gray-500 mb-6">Enter your 4-digit passcode</p>
+
+    <input id="passcode-input" type="password" inputmode="numeric" maxlength="4"
+      placeholder="••••"
+      class="w-full text-center text-2xl tracking-[0.5em] border-2 border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-amber-400 mb-4"
+    />
+
+    <button id="login-btn" onclick="submitLogin()"
+      class="w-full bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white font-semibold py-3 rounded-xl transition-colors">
+      Sign In
+    </button>
+
+    <p id="login-error" class="text-red-600 text-sm mt-3 hidden"></p>
+  </div>
+
+<script>
+function getCsrfToken() {
+  const match = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
+  return match ? match[1] : '';
+}
+
+async function submitLogin() {
+  const input = document.getElementById('passcode-input');
+  const btn   = document.getElementById('login-btn');
+  const errEl = document.getElementById('login-error');
+  const passcode = input.value.trim();
+
+  if (passcode.length !== 4) {
+    errEl.textContent = 'Please enter a 4-digit passcode.';
+    errEl.classList.remove('hidden');
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'Signing in…';
+  errEl.classList.add('hidden');
+
+  try {
+    const res  = await fetch('/api/staff/login/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
+      body: JSON.stringify({ passcode }),
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      errEl.textContent = data.error || 'Login failed.';
+      errEl.classList.remove('hidden');
+      input.value = '';
+      input.focus();
+      return;
+    }
+
+    window.location.href = '/staff/' + data.role + '/';
+  } catch {
+    errEl.textContent = 'Could not connect. Please try again.';
+    errEl.classList.remove('hidden');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Sign In';
+  }
+}
+
+// auto-submit when 4 digits entered
+document.getElementById('passcode-input').addEventListener('input', function () {
+  if (this.value.length === 4) submitLogin();
+});
+
+document.getElementById('passcode-input').focus();
+</script>
+</body>
+</html>
