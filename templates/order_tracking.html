@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Order Tracking</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 min-h-screen">
+
+  <!-- Header -->
+  <header class="bg-white shadow-sm sticky top-0 z-10">
+    <div class="max-w-2xl mx-auto px-4 py-4 flex items-center justify-between">
+      <div>
+        <h1 id="restaurant-name" class="text-xl font-bold text-gray-900">Loading…</h1>
+        <p id="table-label" class="text-sm text-gray-500"></p>
+      </div>
+      <span id="order-label" class="text-sm font-mono text-gray-400"></span>
+    </div>
+  </header>
+
+  <main class="max-w-2xl mx-auto px-4 py-6 space-y-6">
+
+    <!-- Overall status banner -->
+    <div id="status-banner" class="rounded-2xl px-6 py-5 text-center transition-colors">
+      <p class="text-xs font-semibold uppercase tracking-widest mb-1 opacity-60" id="banner-label">Status</p>
+      <p id="banner-status" class="text-2xl font-bold">—</p>
+    </div>
+
+    <!-- Items list -->
+    <section>
+      <h2 class="text-base font-semibold text-gray-700 mb-3">Your items</h2>
+      <div id="items-list" class="space-y-2"></div>
+    </section>
+
+    <!-- Footer note -->
+    <p id="footer-note" class="text-center text-xs text-gray-400 pb-4"></p>
+
+  </main>
+
+<script>
+const STATUS_STYLE = {
+  NEW:       { label: 'New',        chip: 'bg-gray-100 text-gray-600',   banner: 'bg-gray-100 text-gray-700' },
+  PREPARING: { label: 'Preparing',  chip: 'bg-amber-100 text-amber-700', banner: 'bg-amber-50 text-amber-700' },
+  READY:     { label: 'Ready!',     chip: 'bg-green-100 text-green-700', banner: 'bg-green-50 text-green-700' },
+  SERVED:    { label: 'Served',     chip: 'bg-teal-100 text-teal-700',   banner: 'bg-teal-50 text-teal-700' },
+};
+
+const orderId = window.location.pathname.split('/').filter(Boolean).pop();
+let pollTimer = null;
+
+async function fetchStatus() {
+  try {
+    const res  = await fetch(`/api/orders/${orderId}/`);
+    const data = await res.json();
+    if (!res.ok) {
+      showFetchError(data.error || 'Could not load order.');
+      return;
+    }
+    renderOrder(data);
+    if (data.status === 'SERVED') {
+      clearInterval(pollTimer);
+      pollTimer = null;
+    }
+  } catch {
+    // network hiccup — keep polling, don't clear UI
+  }
+}
+
+function renderOrder(data) {
+  document.getElementById('restaurant-name').textContent = data.restaurant_name;
+  document.getElementById('table-label').textContent     = `Table ${data.table_number}`;
+  document.getElementById('order-label').textContent     = `Order #${data.id}`;
+  document.title = `Order #${data.id}`;
+
+  // banner
+  const s = STATUS_STYLE[data.status] || STATUS_STYLE.NEW;
+  const banner = document.getElementById('status-banner');
+  banner.className = `rounded-2xl px-6 py-5 text-center transition-colors ${s.banner}`;
+  document.getElementById('banner-status').textContent = s.label;
+
+  // items
+  const list = document.getElementById('items-list');
+  list.innerHTML = '';
+  data.items.forEach(item => {
+    const cs = STATUS_STYLE[item.status] || STATUS_STYLE.NEW;
+    const row = document.createElement('div');
+    row.className = 'bg-white rounded-xl px-4 py-3 flex items-center justify-between shadow-sm';
+    row.innerHTML = `
+      <div class="flex-1 min-w-0">
+        <p class="font-medium text-gray-900">${esc(item.name)}</p>
+        ${item.notes ? `<p class="text-xs text-gray-400 mt-0.5">${esc(item.notes)}</p>` : ''}
+      </div>
+      <div class="flex items-center gap-3 ml-3 flex-shrink-0">
+        <span class="text-sm text-gray-400">&times;${item.quantity}</span>
+        <span class="text-xs font-semibold px-2.5 py-1 rounded-full ${cs.chip}">${cs.label}</span>
+      </div>`;
+    list.appendChild(row);
+  });
+
+  // footer
+  const note = document.getElementById('footer-note');
+  note.textContent = data.status === 'SERVED'
+    ? 'Your order is complete! Thank you for dining with us.'
+    : 'This page updates automatically every 6 seconds.';
+}
+
+function showFetchError(msg) {
+  document.getElementById('restaurant-name').textContent = 'Error';
+  document.getElementById('footer-note').textContent = msg;
+}
+
+function esc(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+// boot — fetch immediately, then poll every 6s
+fetchStatus();
+pollTimer = setInterval(fetchStatus, 6000);
+</script>
+</body>
+</html>

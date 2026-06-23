@@ -2,8 +2,8 @@ from rest_framework.authentication import SessionAuthentication
 from rest_framework.views import APIView
 from rest_framework.response import Response
 
-from core.models import Table, MenuItem
-from .serializers import MenuItemSerializer, OrderCreateSerializer
+from core.models import Table, MenuItem, Order
+from .serializers import MenuItemSerializer, OrderCreateSerializer, OrderDetailSerializer
 
 
 class EnforceCsrfAuthentication(SessionAuthentication):
@@ -57,3 +57,18 @@ class OrderCreateView(APIView):
             return Response(serializer.errors, status=400)
         order = serializer.save()
         return Response({'order_id': order.id, 'status': order.status}, status=201)
+
+
+class OrderDetailView(APIView):
+    authentication_classes = []
+    permission_classes = []
+
+    def get(self, request, pk):
+        try:
+            order = (Order.objects
+                     .select_related('table__restaurant')
+                     .prefetch_related('items__menu_item')
+                     .get(pk=pk))
+        except Order.DoesNotExist:
+            return Response({'error': 'Order not found.'}, status=404)
+        return Response(OrderDetailSerializer(order).data)

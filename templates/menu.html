@@ -67,25 +67,6 @@
     </div>
   </aside>
 
-  <!-- Success modal -->
-  <div id="success-modal" class="fixed inset-0 bg-black/50 z-40 hidden items-center justify-center p-4 flex">
-    <div class="bg-white rounded-2xl p-6 max-w-xs w-full text-center shadow-xl">
-      <div class="w-14 h-14 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
-        <svg class="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
-        </svg>
-      </div>
-      <h2 class="text-xl font-bold mb-1">Order placed!</h2>
-      <p class="text-gray-500 text-sm mb-1">
-        Order <span id="success-order-id" class="font-mono font-bold text-gray-800"></span>
-      </p>
-      <p class="text-gray-400 text-xs mb-5">We'll start preparing your order shortly.</p>
-      <button onclick="dismissSuccess()"
-        class="bg-amber-500 hover:bg-amber-600 text-white px-8 py-2 rounded-xl font-semibold transition-colors">
-        OK
-      </button>
-    </div>
-  </div>
 
 <script>
 // ─── state ─────────────────────────────────────────────────────────────────
@@ -352,14 +333,8 @@ async function submitOrder() {
       return;
     }
 
-    // success — reset cart and show confirmation
-    closeCart();
-    state.cart = {};
-    updateCartBadge();
-    resetAllControls();
-    document.getElementById('phone-input').value = '';
-    document.getElementById('success-order-id').textContent = `#${data.order_id}`;
-    document.getElementById('success-modal').classList.remove('hidden');
+    // success — redirect to order tracking page
+    window.location.href = '/order/' + data.order_id + '/';
 
   } catch {
     errEl.textContent = 'Could not connect. Please try again.';
@@ -383,10 +358,6 @@ function extractError(data) {
   const key = Object.keys(data)[0];
   const val = data[key];
   return Array.isArray(val) ? `${key}: ${val[0]}` : JSON.stringify(data);
-}
-
-function dismissSuccess() {
-  document.getElementById('success-modal').classList.add('hidden');
 }
 
 // ─── category scroll / tab highlight ────────────────────────────────────────
