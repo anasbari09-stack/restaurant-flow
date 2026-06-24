@@ -4,22 +4,92 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Menu</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
   <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            surface:  '#0a0a0a',
+            card:     '#141414',
+            'card-2': '#1e1e1e',
+            gold:     '#d4a520',
+            'gold-h': '#b8920a',
+          },
+          fontFamily: {
+            display: ['"Playfair Display"', 'Georgia', 'serif'],
+            sans:    ['Inter', 'system-ui', 'sans-serif'],
+          },
+        },
+      },
+    }
+  </script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    /* ── scrollbar hide ──────────────────────────────────────────────────────── */
+    .scrollbar-hide::-webkit-scrollbar { display: none; }
+    .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+
+    /* ── card entrance stagger ───────────────────────────────────────────────── */
+    @keyframes fadeSlideUp {
+      from { opacity: 0; transform: translateY(16px); }
+      to   { opacity: 1; transform: translateY(0);    }
+    }
+    .card-animate {
+      animation: fadeSlideUp .35s ease forwards;
+      opacity: 0;
+    }
+
+    /* ── card hover lift ─────────────────────────────────────────────────────── */
+    .menu-card { transition: transform .2s ease, box-shadow .2s ease; }
+    .menu-card:hover {
+      transform: scale(1.02) translateY(-3px);
+      box-shadow: 0 24px 48px rgba(0,0,0,.65);
+    }
+
+    /* ── button press ────────────────────────────────────────────────────────── */
+    button:active:not(:disabled) {
+      transform: scale(0.93);
+      transition: transform .05s ease;
+    }
+
+    /* ── cart bump ───────────────────────────────────────────────────────────── */
+    @keyframes cartBump {
+      0%   { transform: scale(1);    }
+      40%  { transform: scale(1.4);  }
+      70%  { transform: scale(0.88); }
+      100% { transform: scale(1);    }
+    }
+    .cart-bump { animation: cartBump .4s ease; }
+
+    /* ── offers carousel: one full-width slide at a time, smooth snap ─────────── */
+    #offers-carousel {
+      scroll-snap-type: x mandatory;
+      scroll-behavior: smooth;
+      overscroll-behavior-x: contain;
+    }
+    .offer-slide { scroll-snap-align: center; }
+
+    /* ── image fade-in ───────────────────────────────────────────────────────── */
+    .img-fade { opacity: 0; transition: opacity .5s ease; }
+    .img-fade.loaded { opacity: 1; }
+  </style>
 </head>
-<body class="bg-gray-50 min-h-screen">
+<body class="bg-surface text-gray-100 font-sans min-h-screen">
 
   <!-- Header -->
-  <header class="bg-white shadow-sm sticky top-0 z-10">
+  <header class="bg-card/95 backdrop-blur border-b border-white/10 sticky top-0 z-20">
     <div class="max-w-3xl mx-auto px-4 py-4 flex items-center justify-between">
       <div>
-        <h1 id="restaurant-name" class="text-xl font-bold text-gray-900">Loading…</h1>
-        <p id="table-label" class="text-sm text-gray-500"></p>
+        <h1 id="restaurant-name" class="font-display text-xl font-bold text-gold">Loading…</h1>
+        <p id="table-label" class="text-sm text-gray-400"></p>
       </div>
-      <button onclick="openCart()" class="relative p-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-full transition-colors">
-        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-            d="M3 3h2l.4 2M7 13h10l4-10H5.4M7 13l-1.5 6h13M7 13H5.4M10 19a1 1 0 100 2 1 1 0 000-2zm7 0a1 1 0 100 2 1 1 0 000-2z"/>
-        </svg>
+      <button id="cart-btn" onclick="openCart()"
+        class="relative p-2.5 bg-gold hover:bg-gold-h text-black rounded-full transition-colors">
+        <i data-lucide="shopping-cart" class="w-5 h-5"></i>
         <span id="cart-badge"
           class="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center hidden">
           0
@@ -28,42 +98,65 @@
     </div>
   </header>
 
-  <!-- Category tabs -->
-  <div class="bg-white border-b sticky top-[68px] z-10">
-    <div class="max-w-3xl mx-auto px-4">
-      <div id="category-tabs" class="flex gap-1 overflow-x-auto py-2 scrollbar-hide"></div>
+  <!-- Special Offers carousel -->
+  <section id="offers-section" class="hidden max-w-3xl mx-auto px-4 pt-6">
+    <div class="flex items-end justify-between mb-3">
+      <div>
+        <p class="text-[11px] font-semibold tracking-[0.2em] text-gold/80 uppercase">Special Offers</p>
+        <h2 class="font-display text-2xl font-bold text-white mt-0.5">Today's Picks</h2>
+      </div>
+      <div class="flex gap-2">
+        <button onclick="scrollOffers(-1)" aria-label="Previous offer"
+          class="w-9 h-9 rounded-full bg-card-2 border border-white/10 text-gray-300 hover:text-white hover:border-gold/50 flex items-center justify-center transition-colors">
+          <i data-lucide="chevron-left" class="w-5 h-5"></i>
+        </button>
+        <button onclick="scrollOffers(1)" aria-label="Next offer"
+          class="w-9 h-9 rounded-full bg-card-2 border border-white/10 text-gray-300 hover:text-white hover:border-gold/50 flex items-center justify-center transition-colors">
+          <i data-lucide="chevron-right" class="w-5 h-5"></i>
+        </button>
+      </div>
+    </div>
+    <div id="offers-carousel" class="flex gap-4 overflow-x-auto scrollbar-hide -mx-1 px-1 pb-1"></div>
+  </section>
+
+  <!-- Menu heading + filter pills (sticky) -->
+  <div id="menu-bar" class="hidden bg-surface/95 backdrop-blur sticky top-[69px] z-10 border-b border-white/5">
+    <div class="max-w-3xl mx-auto px-4 pt-6 pb-3">
+      <p class="text-[11px] font-semibold tracking-[0.2em] text-gold/80 uppercase">Our Menu</p>
+      <h2 class="font-display text-2xl font-bold text-white mt-0.5 mb-3">Browse the Menu</h2>
+      <div id="filter-pills" class="flex gap-2 overflow-x-auto scrollbar-hide"></div>
     </div>
   </div>
 
   <!-- Menu content -->
   <main class="max-w-3xl mx-auto px-4 py-6">
-    <div id="menu-error" class="hidden bg-red-100 border border-red-200 text-red-700 rounded-lg p-4 mb-4"></div>
-    <div id="menu-content" class="space-y-8"></div>
+    <div id="menu-error" class="hidden bg-red-900/30 border border-red-500/30 text-red-400 rounded-lg p-4 mb-4"></div>
+    <div id="menu-content" class="space-y-10"></div>
   </main>
 
   <!-- Cart overlay -->
-  <div id="cart-overlay" class="fixed inset-0 bg-black/40 z-20 hidden" onclick="closeCart()"></div>
+  <div id="cart-overlay" class="fixed inset-0 bg-black/60 z-30 hidden" onclick="closeCart()"></div>
 
   <!-- Cart drawer -->
   <aside id="cart-drawer"
-    class="fixed right-0 top-0 h-full w-full max-w-sm bg-white shadow-2xl z-30 translate-x-full transition-transform duration-300 flex flex-col">
-    <div class="flex items-center justify-between px-4 py-4 border-b">
-      <h2 class="text-lg font-bold">Your Order</h2>
-      <button onclick="closeCart()" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+    class="fixed right-0 top-0 h-full w-full max-w-sm bg-card-2 shadow-2xl z-40 translate-x-full transition-transform duration-300 flex flex-col border-l border-white/10">
+    <div class="flex items-center justify-between px-4 py-4 border-b border-white/10">
+      <h2 class="font-display text-lg font-bold text-white">Your Order</h2>
+      <button onclick="closeCart()" class="text-gray-400 hover:text-white text-2xl leading-none transition-colors">&times;</button>
     </div>
     <div id="cart-items" class="flex-1 overflow-y-auto px-4 py-3 space-y-3"></div>
-    <div class="px-4 py-4 border-t space-y-3 bg-white">
+    <div class="px-4 py-4 border-t border-white/10 space-y-3 bg-card-2">
       <div class="flex justify-between text-base font-bold">
-        <span>Total</span>
-        <span id="cart-total">$0.00</span>
+        <span class="text-gray-300">Total</span>
+        <span id="cart-total" class="text-gold">$0.00</span>
       </div>
       <input id="phone-input" type="tel" placeholder="Phone number (optional — for loyalty points)"
-        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400" />
+        class="w-full bg-white/5 border border-white/10 text-white placeholder-gray-500 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gold" />
       <button id="order-btn" onclick="submitOrder()"
-        class="w-full bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white font-semibold py-3 rounded-xl transition-colors">
+        class="w-full bg-gold hover:bg-gold-h disabled:opacity-50 text-black font-bold py-3 rounded-xl transition-colors">
         Place Order
       </button>
-      <p id="order-error" class="text-red-600 text-sm hidden"></p>
+      <p id="order-error" class="text-red-400 text-sm hidden"></p>
     </div>
   </aside>
 
@@ -72,12 +165,17 @@
 // ─── state ─────────────────────────────────────────────────────────────────
 const state = {
   tableToken: new URLSearchParams(location.search).get('table') || '',
-  menuData: null,   // full API response
-  cart: {},         // { id: { name, price, qty } }
+  // "Order more items" passes ?add_to=<orderId> so new items append to that
+  // active order instead of creating a new one (server validates appendability).
+  addToOrderId: new URLSearchParams(location.search).get('add_to') || '',
+  menuData: null,
+  cart: {},
+  filter: 'all',
 };
 
 const CATEGORY_ORDER  = ['food', 'drink', 'dessert'];
 const CATEGORY_LABELS = { food: 'Food', drink: 'Drinks', dessert: 'Desserts' };
+const CATEGORY_ICONS  = { food: 'utensils', drink: 'wine', dessert: 'cake-slice' };
 
 // ─── CSRF ───────────────────────────────────────────────────────────────────
 function getCsrfToken() {
@@ -103,6 +201,7 @@ async function init() {
   } catch {
     showError('Could not connect to the server. Please try again.');
   }
+  lucide.createIcons();
 }
 
 function showError(msg) {
@@ -118,32 +217,113 @@ function renderPage(data) {
   document.getElementById('table-label').textContent     = `Table ${data.table.number}`;
   document.title = data.restaurant.name;
 
+  renderOffers(data.featured || []);
+
   const categories = CATEGORY_ORDER.filter(c => data.menu[c]?.length);
+  renderFilterPills(categories);
+  renderSections(data, categories);
 
-  // tabs
-  const tabsEl = document.getElementById('category-tabs');
-  categories.forEach((cat, i) => {
-    const btn = document.createElement('button');
-    btn.id        = `tab-${cat}`;
-    btn.textContent = CATEGORY_LABELS[cat];
-    btn.className = tabClass(i === 0);
-    btn.onclick   = () => scrollToCategory(cat);
-    tabsEl.appendChild(btn);
+  applyFilter('all');
+}
+
+// ─── special offers carousel ────────────────────────────────────────────────
+function renderOffers(featured) {
+  if (!featured.length) return;
+  document.getElementById('offers-section').classList.remove('hidden');
+  const carousel = document.getElementById('offers-carousel');
+
+  featured.forEach(item => {
+    const id    = item.id;
+    const name  = item.name;
+    const price = parseFloat(item.price);
+
+    const slide = document.createElement('article');
+    slide.className = 'offer-slide relative flex-shrink-0 w-full rounded-3xl overflow-hidden bg-card border border-white/10 shadow-2xl';
+
+    slide.innerHTML = `
+      <div class="relative h-56 sm:h-64 bg-card-2">
+        ${item.image_url ? `<img src="${esc(item.image_url)}" alt="${esc(name)}"
+            class="img-fade absolute inset-0 w-full h-full object-cover"
+            onload="this.classList.add('loaded')" onerror="this.remove()">` : ''}
+        <div class="absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-black/10"></div>
+        <span class="absolute top-3 left-3 inline-flex items-center gap-1 bg-gold text-black text-[11px] font-bold uppercase tracking-wide px-2.5 py-1 rounded-full">
+          <i data-lucide="star" class="w-3 h-3"></i> Chef's Pick
+        </span>
+        <div class="absolute bottom-0 left-0 right-0 p-4 sm:p-5">
+          <h3 class="font-display text-2xl font-bold text-white leading-tight">${esc(name)}</h3>
+          ${item.description ? `<p class="text-sm text-gray-300 mt-1 line-clamp-2 max-w-md">${esc(item.description)}</p>` : ''}
+          <div class="mt-3 flex items-center justify-between gap-3">
+            <span class="text-gold font-bold text-2xl">$${price.toFixed(2)}</span>
+            <div id="ctrl-${id}" data-variant="lg"></div>
+          </div>
+        </div>
+      </div>
+    `;
+    carousel.appendChild(slide);
+    renderControls(id, name, price, slide.querySelector(`#ctrl-${id}`));
   });
+}
 
-  // sections
+function scrollOffers(dir) {
+  const c = document.getElementById('offers-carousel');
+  c.scrollBy({ left: dir * c.clientWidth, behavior: 'smooth' });
+}
+
+// ─── filter pills ───────────────────────────────────────────────────────────
+function renderFilterPills(categories) {
+  document.getElementById('menu-bar').classList.remove('hidden');
+  const wrap = document.getElementById('filter-pills');
+  const tabs = [['all', 'All', 'layout-grid'], ...categories.map(c => [c, CATEGORY_LABELS[c], CATEGORY_ICONS[c]])];
+
+  tabs.forEach(([cat, label, icon]) => {
+    const btn = document.createElement('button');
+    btn.id        = `pill-${cat}`;
+    btn.className = pillClass(cat === 'all');
+    btn.onclick   = () => applyFilter(cat);
+    btn.innerHTML = `<i data-lucide="${icon}" class="w-4 h-4 flex-shrink-0"></i><span>${label}</span>`;
+    wrap.appendChild(btn);
+  });
+}
+
+function pillClass(active) {
+  const base = 'flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap border transition-colors';
+  return active
+    ? `${base} bg-gold border-gold text-black font-semibold`
+    : `${base} bg-card-2 border-white/10 text-gray-400 hover:text-white hover:border-white/25`;
+}
+
+function applyFilter(cat) {
+  state.filter = cat;
+  document.querySelectorAll('#filter-pills button').forEach(btn => {
+    btn.className = pillClass(btn.id === `pill-${cat}`);
+  });
+  CATEGORY_ORDER.forEach(c => {
+    const section = document.getElementById(`cat-${c}`);
+    if (!section) return;
+    const show = cat === 'all' || cat === c;
+    section.classList.toggle('hidden', !show);
+    if (show) animateSectionCards(c);
+  });
+  lucide.createIcons();
+}
+
+// ─── sections / grid ────────────────────────────────────────────────────────
+function renderSections(data, categories) {
   const contentEl = document.getElementById('menu-content');
   categories.forEach(cat => {
     const section = document.createElement('section');
     section.id    = `cat-${cat}`;
 
-    const heading = document.createElement('h2');
-    heading.className   = 'text-lg font-bold text-gray-800 mb-3';
-    heading.textContent = CATEGORY_LABELS[cat];
+    const heading = document.createElement('div');
+    heading.className = 'mb-4';
+    heading.innerHTML = `
+      <h2 class="font-display text-xl font-bold text-gold">${CATEGORY_LABELS[cat]}</h2>
+      <div class="mt-1.5 w-10 h-px bg-gold/40"></div>
+    `;
     section.appendChild(heading);
 
     const grid = document.createElement('div');
-    grid.className = 'grid gap-3 sm:grid-cols-2';
+    grid.className = 'grid gap-4 sm:grid-cols-2';
     data.menu[cat].forEach(item => grid.appendChild(buildItemCard(item)));
     section.appendChild(grid);
 
@@ -151,65 +331,93 @@ function renderPage(data) {
   });
 }
 
-function tabClass(active) {
-  const base = 'px-4 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-colors';
-  return active
-    ? `${base} bg-amber-500 text-white`
-    : `${base} text-gray-600 hover:bg-gray-100`;
+// ─── card stagger ────────────────────────────────────────────────────────────
+function animateSectionCards(cat) {
+  const cards = document.getElementById(`cat-${cat}`)?.querySelectorAll('.menu-card') ?? [];
+  cards.forEach((card, i) => {
+    card.classList.remove('card-animate');
+    void card.offsetWidth; // force reflow so animation restarts
+    card.style.animationDelay = `${i * 40}ms`;
+    card.classList.add('card-animate');
+  });
 }
 
 // ─── item card ──────────────────────────────────────────────────────────────
 function buildItemCard(item) {
   const card = document.createElement('div');
-  card.className = 'bg-white rounded-xl p-4 shadow-sm flex justify-between items-start gap-3';
+  card.className = 'menu-card bg-card rounded-2xl overflow-hidden shadow-lg border border-white/[0.06] flex flex-col';
+
+  if (item.image_url) {
+    const img = document.createElement('img');
+    img.src       = item.image_url;
+    img.alt       = item.name;
+    img.className = 'img-fade w-full h-36 object-cover';
+    img.addEventListener('load',  () => img.classList.add('loaded'));
+    img.addEventListener('error', () => img.style.display = 'none');
+    card.appendChild(img);
+  }
+
+  const body = document.createElement('div');
+  body.className = 'p-4 flex flex-col flex-1';
 
   const info = document.createElement('div');
   info.className = 'flex-1 min-w-0';
   info.innerHTML = `
-    <p class="font-semibold text-gray-900">${esc(item.name)}</p>
-    ${item.description ? `<p class="text-xs text-gray-500 mt-0.5 line-clamp-2">${esc(item.description)}</p>` : ''}
-    <p class="text-amber-600 font-bold mt-1">$${parseFloat(item.price).toFixed(2)}</p>
+    <p class="font-semibold text-white">${esc(item.name)}</p>
+    ${item.description ? `<p class="text-xs text-gray-400 mt-0.5 line-clamp-2">${esc(item.description)}</p>` : ''}
+    <p class="text-gold font-bold mt-1">$${parseFloat(item.price).toFixed(2)}</p>
   `;
 
   const ctrl = document.createElement('div');
   ctrl.id        = `ctrl-${item.id}`;
-  ctrl.className = 'flex-shrink-0';
+  ctrl.className = 'mt-3 flex justify-end';
 
-  card.appendChild(info);
-  card.appendChild(ctrl);
+  body.appendChild(info);
+  body.appendChild(ctrl);
+  card.appendChild(body);
 
-  // pass ctrl directly — card isn't in the DOM yet so getElementById would return null
   renderControls(item.id, item.name, parseFloat(item.price), ctrl);
   return card;
 }
 
+// ─── add/qty controls (shared by grid + offers; cart logic unchanged) ─────────
 function renderControls(id, name, price, el) {
   const ctrl = el || document.getElementById(`ctrl-${id}`);
   if (!ctrl) return;
-  const qty = state.cart[id]?.qty || 0;
+  const large = ctrl.dataset.variant === 'lg';
+  const qty   = state.cart[id]?.qty || 0;
   ctrl.innerHTML = '';
 
   if (qty === 0) {
     const btn = document.createElement('button');
-    btn.className = 'bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold px-3 py-1.5 rounded-lg transition-colors';
-    btn.textContent = 'Add';
+    if (large) {
+      btn.className = 'flex items-center gap-2 bg-gold hover:bg-gold-h text-black font-bold px-5 py-2.5 rounded-full transition-colors';
+      btn.innerHTML = '<span>Add to Order</span>';
+    } else {
+      btn.className = 'w-8 h-8 rounded-full bg-gold hover:bg-gold-h text-black font-bold text-xl leading-none flex items-center justify-center transition-colors flex-shrink-0';
+      btn.textContent = '+';
+    }
     btn.addEventListener('click', () => addToCart(id, name, price));
     ctrl.appendChild(btn);
   } else {
     const wrap = document.createElement('div');
-    wrap.className = 'flex items-center gap-2';
+    wrap.className = large
+      ? 'flex items-center gap-3 bg-black/40 backdrop-blur rounded-full px-2 py-1'
+      : 'flex items-center gap-2';
+
+    const btnSize = large ? 'w-9 h-9 text-lg' : 'w-7 h-7';
 
     const minus = document.createElement('button');
-    minus.className = 'w-7 h-7 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold flex items-center justify-center';
+    minus.className = `${btnSize} rounded-full bg-white/10 hover:bg-white/20 text-white font-bold flex items-center justify-center transition-colors`;
     minus.textContent = '−';
     minus.addEventListener('click', () => changeQty(id, -1));
 
     const countEl = document.createElement('span');
-    countEl.className = 'font-bold text-gray-900 w-4 text-center';
+    countEl.className = `font-bold text-white text-center ${large ? 'w-6 text-lg' : 'w-4'}`;
     countEl.textContent = qty;
 
     const plus = document.createElement('button');
-    plus.className = 'w-7 h-7 rounded-full bg-amber-500 hover:bg-amber-600 text-white font-bold flex items-center justify-center';
+    plus.className = `${btnSize} rounded-full bg-gold hover:bg-gold-h text-black font-bold flex items-center justify-center transition-colors`;
     plus.textContent = '+';
     plus.addEventListener('click', () => changeQty(id, 1));
 
@@ -221,7 +429,19 @@ function renderControls(id, name, price, el) {
 // ─── cart logic ─────────────────────────────────────────────────────────────
 function addToCart(id, name, price) {
   state.cart[id] = { name, price, qty: 1 };
-  afterCartChange(id, name, price);
+  // brief checkmark on the + button (grid only)
+  const btn = document.querySelector(`#ctrl-${id} button`);
+  const ctrl = document.getElementById(`ctrl-${id}`);
+  if (btn && ctrl?.dataset.variant !== 'lg') {
+    btn.textContent = '✓';
+    setTimeout(() => {
+      afterCartChange(id, name, price);
+      triggerCartBump();
+    }, 240);
+  } else {
+    afterCartChange(id, name, price);
+    triggerCartBump();
+  }
 }
 
 function changeQty(id, delta) {
@@ -245,6 +465,14 @@ function updateCartBadge() {
   badge.classList.toggle('hidden', count === 0);
 }
 
+function triggerCartBump() {
+  const btn = document.getElementById('cart-btn');
+  btn.classList.remove('cart-bump');
+  void btn.offsetWidth;
+  btn.classList.add('cart-bump');
+  btn.addEventListener('animationend', () => btn.classList.remove('cart-bump'), { once: true });
+}
+
 // ─── cart drawer ────────────────────────────────────────────────────────────
 function openCart() {
   renderCartItems();
@@ -262,7 +490,7 @@ function renderCartItems() {
   const el      = document.getElementById('cart-items');
 
   if (entries.length === 0) {
-    el.innerHTML = '<p class="text-gray-400 text-center py-10">Your cart is empty</p>';
+    el.innerHTML = '<p class="text-gray-500 text-center py-10">Your cart is empty</p>';
     document.getElementById('cart-total').textContent = '$0.00';
     return;
   }
@@ -274,21 +502,21 @@ function renderCartItems() {
     return `
       <div class="flex items-center gap-2">
         <div class="flex-1 min-w-0">
-          <p class="text-sm font-medium text-gray-900 truncate">${esc(item.name)}</p>
+          <p class="text-sm font-medium text-white truncate">${esc(item.name)}</p>
           <p class="text-xs text-gray-400">$${item.price.toFixed(2)} &times; ${item.qty}</p>
         </div>
         <div class="flex items-center gap-1.5">
           <button onclick="changeQty(${id}, -1)"
-            class="w-6 h-6 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold flex items-center justify-center">
+            class="w-6 h-6 rounded-full bg-white/10 hover:bg-white/20 text-white text-xs font-bold flex items-center justify-center transition-colors">
             &minus;
           </button>
-          <span class="w-4 text-center text-sm font-bold">${item.qty}</span>
+          <span class="w-4 text-center text-sm font-bold text-white">${item.qty}</span>
           <button onclick="changeQty(${id}, 1)"
-            class="w-6 h-6 rounded-full bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold flex items-center justify-center">
+            class="w-6 h-6 rounded-full bg-gold hover:bg-gold-h text-black text-xs font-bold flex items-center justify-center transition-colors">
             +
           </button>
         </div>
-        <span class="text-sm font-bold text-gray-900 w-12 text-right">$${sub.toFixed(2)}</span>
+        <span class="text-sm font-bold text-gold w-12 text-right">$${sub.toFixed(2)}</span>
       </div>`;
   }).join('');
 
@@ -315,6 +543,7 @@ async function submitOrder() {
     })),
   };
   if (phone) payload.phone = phone;
+  if (state.addToOrderId) payload.order_id = parseInt(state.addToOrderId);
 
   try {
     const res  = await fetch('/api/orders/', {
@@ -333,7 +562,6 @@ async function submitOrder() {
       return;
     }
 
-    // success — redirect to order tracking page
     window.location.href = '/order/' + data.order_id + '/';
 
   } catch {
@@ -345,28 +573,12 @@ async function submitOrder() {
   }
 }
 
-function resetAllControls() {
-  if (!state.menuData) return;
-  Object.values(state.menuData.menu).flat().forEach(item =>
-    renderControls(item.id, item.name, parseFloat(item.price))
-  );
-}
-
 function extractError(data) {
   if (typeof data === 'string') return data;
   if (data.error)               return data.error;
   const key = Object.keys(data)[0];
   const val = data[key];
   return Array.isArray(val) ? `${key}: ${val[0]}` : JSON.stringify(data);
-}
-
-// ─── category scroll / tab highlight ────────────────────────────────────────
-function scrollToCategory(cat) {
-  document.getElementById(`cat-${cat}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  document.querySelectorAll('[id^="tab-"]').forEach(btn => {
-    const active = btn.id === `tab-${cat}`;
-    btn.className = tabClass(active);
-  });
 }
 
 // ─── util ────────────────────────────────────────────────────────────────────

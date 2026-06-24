@@ -34,6 +34,11 @@ class MenuItem(models.Model):
     price = models.DecimalField(max_digits=8, decimal_places=2)
     category = models.CharField(max_length=10, choices=CATEGORY_CHOICES)
     is_available = models.BooleanField(default=True)
+    is_featured = models.BooleanField(
+        default=False,
+        help_text="Show this item in the Today's Picks / special offers carousel.",
+    )
+    image_url = models.URLField(blank=True)
 
     class Meta:
         ordering = ['category', 'name']
@@ -112,11 +117,26 @@ class StaffPasscode(models.Model):
         return f'{self.role} ({self.passcode})'
 
 
-class Review(models.Model):
-    order = models.OneToOneField(Order, on_delete=models.CASCADE, related_name='review')
-    rating = models.PositiveSmallIntegerField()
-    comment = models.TextField(blank=True)
+class HelpAlert(models.Model):
+    order      = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='help_alerts')
     created_at = models.DateTimeField(auto_now_add=True)
+    resolved   = models.BooleanField(default=False)
 
     def __str__(self):
-        return f'Review for Order #{self.order_id} — {self.rating}/5'
+        return f'HelpAlert #{self.pk} — Order #{self.order_id} (resolved={self.resolved})'
+
+
+class Review(models.Model):
+    order          = models.OneToOneField(Order, on_delete=models.CASCADE, related_name='review')
+    food_rating    = models.PositiveSmallIntegerField(default=3)
+    service_rating = models.PositiveSmallIntegerField(default=3)
+    overall_rating = models.PositiveSmallIntegerField(default=3)
+    problem_item   = models.ForeignKey(
+        OrderItem, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='problem_reviews',
+    )
+    comment        = models.TextField(blank=True)
+    created_at     = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f'Review for Order #{self.order_id} — {self.overall_rating}/5'

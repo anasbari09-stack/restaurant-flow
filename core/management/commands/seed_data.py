@@ -19,25 +19,34 @@ class Command(BaseCommand):
             Table.objects.get_or_create(restaurant=restaurant, number=number)
         self.stdout.write('Tables 1–5 ready')
 
+        IMG = 'https://images.unsplash.com/photo-{}?w=800&q=80'
+        # (name, category, price, description, image photo-id, is_featured)
+        # Image IDs were each downloaded and visually confirmed to match the dish.
         items = [
-            ('Margherita Pizza', 'food', '12.99', 'Classic tomato sauce and mozzarella'),
-            ('Beef Burger', 'food', '11.50', 'Juicy beef patty with fresh veggies'),
-            ('Caesar Salad', 'food', '8.99', 'Romaine, croutons, parmesan'),
-            ('Grilled Salmon', 'food', '18.00', 'With lemon butter sauce and greens'),
-            ('Lemonade', 'drink', '3.50', 'Freshly squeezed'),
-            ('Iced Coffee', 'drink', '4.00', 'Cold brew over ice'),
-            ('Orange Juice', 'drink', '3.00', 'Freshly squeezed'),
-            ('Mineral Water', 'drink', '2.00', 'Still or sparkling'),
-            ('Chocolate Lava Cake', 'dessert', '6.50', 'Warm cake with molten center'),
-            ('Vanilla Ice Cream', 'dessert', '4.50', 'Three scoops with toppings'),
-            ('Tiramisu', 'dessert', '5.99', 'Classic Italian dessert'),
+            ('Margherita Pizza', 'food', '12.99', 'Classic tomato sauce, fresh mozzarella and basil', '1574071318508-1cdbab80d002', True),
+            ('Beef Burger', 'food', '11.50', 'Juicy double beef patty, house sauce and fresh veggies', '1568901346375-23c9450c58cd', True),
+            ('Caesar Salad', 'food', '8.99', 'Crisp romaine, croutons and shaved parmesan', '1550304943-4f24f54ddde9', False),
+            ('Grilled Salmon', 'food', '18.00', 'Seared salmon over greens with lemon butter sauce', '1467003909585-2f8a72700288', True),
+            ('Lemonade', 'drink', '3.50', 'Freshly squeezed with mint', '1621263764928-df1444c5e859', False),
+            ('Iced Coffee', 'drink', '4.00', 'Cold brew over ice', '1461023058943-07fcbe16d735', False),
+            ('Orange Juice', 'drink', '3.00', 'Freshly squeezed', '1600271886742-f049cd451bba', False),
+            ('Mineral Water', 'drink', '2.00', 'Still or sparkling', '1523362628745-0c100150b504', False),
+            ('Chocolate Lava Cake', 'dessert', '6.50', 'Warm cake with a molten chocolate center and ice cream', '1624353365286-3f8d62daad51', True),
+            ('Vanilla Ice Cream', 'dessert', '4.50', 'Creamy scoops with toppings', '1497034825429-c343d7c6a68f', False),
+            ('Tiramisu', 'dessert', '5.99', 'Classic Italian coffee-soaked dessert', '1571877227200-a0d98ea607e9', False),
         ]
 
-        for name, category, price, description in items:
-            MenuItem.objects.get_or_create(
+        for name, category, price, description, photo_id, is_featured in items:
+            MenuItem.objects.update_or_create(
                 restaurant=restaurant,
                 name=name,
-                defaults={'category': category, 'price': price, 'description': description},
+                defaults={
+                    'category': category,
+                    'price': price,
+                    'description': description,
+                    'image_url': IMG.format(photo_id),
+                    'is_featured': is_featured,
+                },
             )
 
         passcodes = [

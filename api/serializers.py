@@ -1,21 +1,38 @@
+from django.db import transaction
+from django.utils import timezone
 from rest_framework import serializers
-from core.models import Table, MenuItem, Customer, Order, OrderItem
+from core.models import Table, MenuItem, Customer, Order, OrderItem, Review
+
+DELAY_THRESHOLD_MINUTES = 15
 
 
 class MenuItemSerializer(serializers.ModelSerializer):
     class Meta:
         model = MenuItem
-        fields = ['id', 'name', 'description', 'price', 'category']
+        fields = ['id', 'name', 'description', 'price', 'category', 'image_url', 'is_featured']
 
 
 class OrderItemStationSerializer(serializers.ModelSerializer):
-    name         = serializers.CharField(source='menu_item.name')
-    table_number = serializers.IntegerField(source='order.table.number')
-    order_id     = serializers.IntegerField(source='order.id')
+    name                  = serializers.CharField(source='menu_item.name')
+    table_number          = serializers.IntegerField(source='order.table.number')
+    order_id              = serializers.IntegerField(source='order.id')
+    order_waiting_minutes = serializers.SerializerMethodField()
+    is_delayed            = serializers.SerializerMethodField()
 
     class Meta:
         model  = OrderItem
-        fields = ['id', 'name', 'quantity', 'notes', 'status', 'table_number', 'order_id']
+        fields = ['id', 'name', 'quantity', 'notes', 'status',
+                  'table_number', 'order_id', 'order_waiting_minutes', 'is_delayed']
+
+    def get_order_waiting_minutes(self, obj):
+        delta = timezone.now() - obj.order.created_at
+        return int(delta.total_seconds() // 60)
+
+    def get_is_delayed(self, obj):
+        if obj.status not in ('NEW', 'PREPARING'):
+            return False
+        delta = timezone.now() - obj.order.created_at
+        return (delta.total_seconds() / 60) > DELAY_THRESHOLD_MINUTES
 
 
 class OrderItemDetailSerializer(serializers.ModelSerializer):
@@ -31,12 +48,20 @@ class OrderDetailSerializer(serializers.ModelSerializer):
     table_number    = serializers.IntegerField(source='table.number')
     table_token     = serializers.UUIDField(source='table.qr_token')
     restaurant_name = serializers.CharField(source='table.restaurant.name')
-    status          = serializers.CharField(read_only=True)  # @property on Order
+    status          = serializers.CharField(read_only=True)
+    has_review      = serializers.SerializerMethodField()
 
     class Meta:
         model  = Order
         fields = ['id', 'status', 'created_at', 'table_number', 'table_token',
-                  'restaurant_name', 'items']
+                  'restaurant_name', 'items', 'has_review']
+
+    def get_has_review(self, obj):
+        try:
+            obj.review
+            return True
+        except Exception:
+            return False
 
 
 class OrderItemInputSerializer(serializers.Serializer):
@@ -48,6 +73,8 @@ class OrderItemInputSerializer(serializers.Serializer):
 class OrderCreateSerializer(serializers.Serializer):
     table = serializers.UUIDField()
     phone = serializers.CharField(required=False, allow_blank=True, default='')
+    # Optional "append to existing order" target ("Order more items" flow).
+    order_id = serializers.IntegerField(required=False, allow_null=True, default=None)
     items = OrderItemInputSerializer(many=True)
 
     def validate_table(self, value):
@@ -70,16 +97,27 @@ class OrderCreateSerializer(serializers.Serializer):
             )
         return value
 
+    def validate(self, data):
+        # Resolve the append target. It only counts as appendable if the order
+        # exists, belongs to the same table, and is not yet fully SERVED.
+        # Otherwise we silently fall back to creating a new order (rule: never
+        # lose the customer's items, never append to a served order).
+        data['append_order'] = None
+        order_id = data.get('order_id')
+        if order_id is not None:
+            order = (Order.objects
+                     .filter(pk=order_id, table=data['table'])
+                     .prefetch_related('items')
+                     .first())
+            if order is not None and order.status != 'SERVED':
+                data['append_order'] = order
+        return data
+
     def create(self, validated_data):
         table = validated_data['table']
         phone = validated_data.get('phone', '').strip()
         items_data = validated_data['items']
-
-        customer = None
-        if phone:
-            customer, _ = Customer.objects.get_or_create(phone=phone)
-
-        order = Order.objects.create(table=table, customer=customer)
+        append_order = validated_data.get('append_order')
 
         menu_items = {
             item.id: item
@@ -87,14 +125,75 @@ class OrderCreateSerializer(serializers.Serializer):
                 id__in=[d['menu_item_id'] for d in items_data]
             )
         }
-        OrderItem.objects.bulk_create([
-            OrderItem(
-                order=order,
-                menu_item=menu_items[d['menu_item_id']],
-                quantity=d['quantity'],
-                notes=d.get('notes', ''),
-            )
-            for d in items_data
-        ])
+
+        with transaction.atomic():
+            if append_order is not None:
+                order = append_order
+            else:
+                customer = None
+                if phone:
+                    customer, _ = Customer.objects.get_or_create(phone=phone)
+                order = Order.objects.create(table=table, customer=customer)
+
+            OrderItem.objects.bulk_create([
+                OrderItem(
+                    order=order,
+                    menu_item=menu_items[d['menu_item_id']],
+                    quantity=d['quantity'],
+                    notes=d.get('notes', ''),
+                )
+                for d in items_data
+            ])
 
         return order
+
+
+class ReviewCreateSerializer(serializers.Serializer):
+    order_id        = serializers.IntegerField()
+    food_rating     = serializers.IntegerField(min_value=1, max_value=5)
+    service_rating  = serializers.IntegerField(min_value=1, max_value=5)
+    overall_rating  = serializers.IntegerField(min_value=1, max_value=5)
+    problem_item_id = serializers.IntegerField(required=False, allow_null=True, default=None)
+    comment         = serializers.CharField(required=False, allow_blank=True, default='')
+
+    def validate(self, data):
+        try:
+            order = Order.objects.prefetch_related('items').get(pk=data['order_id'])
+        except Order.DoesNotExist:
+            raise serializers.ValidationError({'order_id': 'Order not found.'})
+        if order.status != 'SERVED':
+            raise serializers.ValidationError(
+                {'order_id': 'Order must be fully served before reviewing.'})
+        try:
+            order.review
+            raise serializers.ValidationError(
+                {'order_id': 'A review already exists for this order.'})
+        except Review.DoesNotExist:
+            pass
+        data['order'] = order
+
+        problem_item_id = data.get('problem_item_id')
+        if problem_item_id is not None:
+            try:
+                problem_item = OrderItem.objects.get(pk=problem_item_id, order=order)
+            except OrderItem.DoesNotExist:
+                raise serializers.ValidationError({
+                    'problem_item_id': (
+                        'That item does not belong to this order, or does not exist.'
+                    )
+                })
+            data['problem_item'] = problem_item
+        else:
+            data['problem_item'] = None
+
+        return data
+
+    def create(self, validated_data):
+        return Review.objects.create(
+            order=validated_data['order'],
+            food_rating=validated_data['food_rating'],
+            service_rating=validated_data['service_rating'],
+            overall_rating=validated_data['overall_rating'],
+            problem_item=validated_data['problem_item'],
+            comment=validated_data.get('comment', ''),
+        )

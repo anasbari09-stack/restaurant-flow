@@ -4,16 +4,39 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Order Tracking</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
   <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            surface:  '#0a0a0a',
+            card:     '#141414',
+            'card-2': '#1e1e1e',
+            gold:     '#d4a520',
+            'gold-h': '#b8920a',
+          },
+          fontFamily: {
+            display: ['"Playfair Display"', 'Georgia', 'serif'],
+            sans:    ['Inter', 'system-ui', 'sans-serif'],
+          },
+        },
+      },
+    }
+  </script>
+  <script src="https://unpkg.com/lucide@latest"></script>
 </head>
-<body class="bg-gray-50 min-h-screen">
+<body class="bg-surface text-gray-100 font-sans min-h-screen">
 
   <!-- Header -->
-  <header class="bg-white shadow-sm sticky top-0 z-10">
+  <header class="bg-card border-b border-white/10 sticky top-0 z-10">
     <div class="max-w-2xl mx-auto px-4 py-4 flex items-center justify-between">
       <div>
-        <h1 id="restaurant-name" class="text-xl font-bold text-gray-900">Loading…</h1>
-        <p id="table-label" class="text-sm text-gray-500"></p>
+        <h1 id="restaurant-name" class="font-display text-xl font-bold text-gold">Loading…</h1>
+        <p id="table-label" class="text-sm text-gray-400"></p>
       </div>
       <span id="order-label" class="text-sm font-mono text-gray-400"></span>
     </div>
@@ -22,48 +45,111 @@
   <main class="max-w-2xl mx-auto px-4 py-6 space-y-6">
 
     <!-- Overall status banner -->
-    <div id="status-banner" class="rounded-2xl px-6 py-5 text-center transition-colors">
-      <p class="text-xs font-semibold uppercase tracking-widest mb-1 opacity-60" id="banner-label">Status</p>
-      <p id="banner-status" class="text-2xl font-bold">—</p>
+    <div id="status-banner" class="rounded-2xl px-6 py-6 text-center border border-white/10 transition-colors">
+      <p class="text-xs font-semibold uppercase tracking-widest mb-1 text-gray-500" id="banner-label">Status</p>
+      <p id="banner-status" class="font-display text-3xl font-bold">—</p>
     </div>
 
     <!-- Items list -->
     <section>
-      <h2 class="text-base font-semibold text-gray-700 mb-3">Your items</h2>
+      <div class="mb-3">
+        <h2 class="font-display text-base font-semibold text-gold">Your items</h2>
+        <div class="mt-1 w-8 h-px bg-gold/40"></div>
+      </div>
       <div id="items-list" class="space-y-2"></div>
     </section>
 
+    <!-- Help button (visible while active, hidden when SERVED) -->
+    <div id="help-wrap" class="hidden">
+      <button id="help-btn"
+        class="w-full border border-gold/50 text-gold hover:bg-gold/10 font-medium py-3 rounded-xl transition-colors text-sm">
+        Need help with my order
+      </button>
+      <p id="help-sent" class="hidden text-center text-sm text-green-400 py-2 font-medium">
+        We've been notified — someone will be with you shortly.
+      </p>
+    </div>
+
+    <!-- Review section (only when SERVED) -->
+    <div id="review-wrap" class="hidden">
+      <div id="review-form-wrap" class="bg-card rounded-2xl p-5">
+        <h2 class="font-display text-base font-semibold text-white mb-4">How was your experience?</h2>
+
+        <div class="space-y-3 mb-4">
+          <div class="flex items-center justify-between">
+            <span class="text-sm text-gray-400 w-24">Food</span>
+            <div id="stars-food" class="flex gap-1"></div>
+          </div>
+          <div class="flex items-center justify-between">
+            <span class="text-sm text-gray-400 w-24">Service</span>
+            <div id="stars-service" class="flex gap-1"></div>
+          </div>
+          <div class="flex items-center justify-between">
+            <span class="text-sm text-gray-400 w-24">Overall</span>
+            <div id="stars-overall" class="flex gap-1"></div>
+          </div>
+        </div>
+
+        <select id="problem-item-select"
+          class="w-full bg-white/5 border border-white/10 text-white rounded-xl px-3 py-2 text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-gold">
+          <option value="" class="bg-card">Any item you'd like to flag? (optional)</option>
+        </select>
+
+        <textarea id="review-comment" rows="3" placeholder="Any comments? (optional)"
+          class="w-full bg-white/5 border border-white/10 text-white placeholder-gray-500 rounded-xl px-3 py-2 text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-gold resize-none"></textarea>
+
+        <button onclick="submitReview()"
+          class="w-full bg-gold hover:bg-gold-h text-black font-bold py-3 rounded-xl transition-colors">
+          Submit Review
+        </button>
+        <p id="review-error" class="text-red-400 text-sm mt-2 hidden"></p>
+      </div>
+      <div id="review-thanks" class="hidden text-center py-6">
+        <p class="text-3xl mb-2">&#x1F64F;</p>
+        <p class="font-semibold text-gray-200">Thanks for your feedback!</p>
+      </div>
+    </div>
+
     <!-- Other active orders at this table -->
     <section id="other-orders-section" class="hidden">
-      <h2 class="text-base font-semibold text-gray-700 mb-3">Other active orders at this table</h2>
+      <div class="mb-3">
+        <h2 class="font-display text-base font-semibold text-gold">Other active orders at this table</h2>
+        <div class="mt-1 w-8 h-px bg-gold/40"></div>
+      </div>
       <div id="other-orders-list" class="space-y-2"></div>
     </section>
 
     <!-- Order more -->
     <div id="order-more-wrap" class="hidden">
       <a id="order-more-link" href="#"
-        class="block w-full text-center bg-amber-500 hover:bg-amber-600 text-white font-semibold py-3 rounded-xl transition-colors">
+        class="block w-full text-center bg-gold hover:bg-gold-h text-black font-bold py-3 rounded-xl transition-colors">
         + Order more items
       </a>
     </div>
 
     <!-- Footer note -->
-    <p id="footer-note" class="text-center text-xs text-gray-400 pb-4"></p>
+    <p id="footer-note" class="text-center text-xs text-gray-500 pb-4"></p>
 
   </main>
 
 <script>
 const STATUS_STYLE = {
-  NEW:       { label: 'New',        chip: 'bg-gray-100 text-gray-600',   banner: 'bg-gray-100 text-gray-700' },
-  PREPARING: { label: 'Preparing',  chip: 'bg-amber-100 text-amber-700', banner: 'bg-amber-50 text-amber-700' },
-  READY:     { label: 'Ready!',     chip: 'bg-green-100 text-green-700', banner: 'bg-green-50 text-green-700' },
-  SERVED:    { label: 'Served',     chip: 'bg-teal-100 text-teal-700',   banner: 'bg-teal-50 text-teal-700' },
+  NEW:       { label: 'New',       icon: 'clock',        chip: 'bg-white/10 text-gray-300',      banner: 'bg-white/5 text-gray-200' },
+  PREPARING: { label: 'Preparing', icon: 'flame',        chip: 'bg-amber-900/60 text-amber-300', banner: 'bg-amber-950/60 text-amber-200' },
+  READY:     { label: 'Ready!',    icon: 'check-circle', chip: 'bg-green-900/60 text-green-300', banner: 'bg-green-950/60 text-green-200' },
+  SERVED:    { label: 'Served',    icon: 'star',         chip: 'bg-teal-900/60 text-teal-300',   banner: 'bg-teal-950/60 text-teal-200' },
 };
 
 const orderId = window.location.pathname.split('/').filter(Boolean).pop();
 let tableToken = null;
 let pollTimer  = null;
 
+function getCsrfToken() {
+  const match = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
+  return match ? match[1] : '';
+}
+
+// ── polling ───────────────────────────────────────────────────────────────────
 async function fetchStatus() {
   try {
     const res  = await fetch(`/api/orders/${orderId}/`);
@@ -81,7 +167,9 @@ async function fetchStatus() {
       tableToken = data.table_token;
       const link = document.getElementById('order-more-link');
       if (link.getAttribute('href') === '#') {
-        link.href = `/menu/?table=${data.table_token}`;
+        // Carry this order's id so new items append to it (server only appends
+        // while it's still active; a fully-served order falls back to a new one).
+        link.href = `/menu/?table=${data.table_token}&add_to=${orderId}`;
         document.getElementById('order-more-wrap').classList.remove('hidden');
       }
       fetchSiblingOrders();
@@ -91,6 +179,7 @@ async function fetchStatus() {
   }
 }
 
+// ── render order ──────────────────────────────────────────────────────────────
 function renderOrder(data) {
   document.getElementById('restaurant-name').textContent = data.restaurant_name;
   document.getElementById('table-label').textContent     = `Table ${data.table_number}`;
@@ -100,7 +189,7 @@ function renderOrder(data) {
   // banner
   const s = STATUS_STYLE[data.status] || STATUS_STYLE.NEW;
   const banner = document.getElementById('status-banner');
-  banner.className = `rounded-2xl px-6 py-5 text-center transition-colors ${s.banner}`;
+  banner.className = `rounded-2xl px-6 py-6 text-center border border-white/10 transition-colors ${s.banner}`;
   document.getElementById('banner-status').textContent = s.label;
 
   // items
@@ -109,18 +198,47 @@ function renderOrder(data) {
   data.items.forEach(item => {
     const cs = STATUS_STYLE[item.status] || STATUS_STYLE.NEW;
     const row = document.createElement('div');
-    row.className = 'bg-white rounded-xl px-4 py-3 flex items-center justify-between shadow-sm';
+    row.className = 'bg-card border border-white/[0.06] rounded-xl px-4 py-3 flex items-center justify-between';
     row.innerHTML = `
       <div class="flex-1 min-w-0">
-        <p class="font-medium text-gray-900">${esc(item.name)}</p>
-        ${item.notes ? `<p class="text-xs text-gray-400 mt-0.5">${esc(item.notes)}</p>` : ''}
+        <p class="font-medium text-white">${esc(item.name)}</p>
+        ${item.notes ? `<p class="text-xs text-gray-500 mt-0.5">${esc(item.notes)}</p>` : ''}
       </div>
       <div class="flex items-center gap-3 ml-3 flex-shrink-0">
         <span class="text-sm text-gray-400">&times;${item.quantity}</span>
-        <span class="text-xs font-semibold px-2.5 py-1 rounded-full ${cs.chip}">${cs.label}</span>
+        <span class="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full ${cs.chip}">
+          <i data-lucide="${cs.icon}" class="w-3 h-3"></i>${cs.label}
+        </span>
       </div>`;
     list.appendChild(row);
   });
+
+  lucide.createIcons();
+
+  // help button — visible while active, hidden when SERVED
+  document.getElementById('help-wrap').classList.toggle('hidden', data.status === 'SERVED');
+
+  // review section — only when SERVED
+  const reviewWrap = document.getElementById('review-wrap');
+  if (data.status === 'SERVED') {
+    reviewWrap.classList.remove('hidden');
+    const sel = document.getElementById('problem-item-select');
+    if (sel.options.length === 1) {
+      data.items.forEach(item => {
+        const opt = document.createElement('option');
+        opt.value = item.id;
+        opt.textContent = `${esc(item.name)} x${item.quantity}`;
+        opt.className = 'bg-card';
+        sel.appendChild(opt);
+      });
+    }
+    if (data.has_review) {
+      document.getElementById('review-form-wrap').classList.add('hidden');
+      document.getElementById('review-thanks').classList.remove('hidden');
+    }
+  } else {
+    reviewWrap.classList.add('hidden');
+  }
 
   // footer
   const note = document.getElementById('footer-note');
@@ -129,6 +247,7 @@ function renderOrder(data) {
     : 'This page updates automatically every 6 seconds.';
 }
 
+// ── sibling orders ────────────────────────────────────────────────────────────
 async function fetchSiblingOrders() {
   if (!tableToken) return;
   try {
@@ -154,16 +273,101 @@ function renderSiblingOrders(orders) {
     const s = STATUS_STYLE[o.status] || STATUS_STYLE.NEW;
     const a = document.createElement('a');
     a.href      = `/order/${o.id}/`;
-    a.className = 'flex items-center justify-between bg-white rounded-xl px-4 py-3 shadow-sm hover:shadow-md transition-shadow';
+    a.className = 'flex items-center justify-between bg-card border border-white/[0.06] hover:bg-card-2 rounded-xl px-4 py-3 transition-colors';
     a.innerHTML = `
-      <span class="text-sm font-medium text-gray-900">Order #${o.id}
+      <span class="text-sm font-medium text-white">Order #${o.id}
         <span class="text-gray-400">&middot; ${o.item_count} item${o.item_count !== 1 ? 's' : ''}</span>
       </span>
-      <span class="text-xs font-semibold px-2.5 py-1 rounded-full ${s.chip}">${s.label}</span>`;
+      <span class="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full ${s.chip}">
+        <i data-lucide="${s.icon}" class="w-3 h-3"></i>${s.label}
+      </span>`;
     list.appendChild(a);
   });
+  lucide.createIcons();
 }
 
+// ── help ──────────────────────────────────────────────────────────────────────
+async function requestHelp() {
+  document.getElementById('help-btn').classList.add('hidden');
+  try {
+    await fetch(`/api/orders/${orderId}/help/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
+      body: JSON.stringify({}),
+    });
+  } catch {}
+  document.getElementById('help-sent').classList.remove('hidden');
+}
+
+// ── review ────────────────────────────────────────────────────────────────────
+const ratings = { food: 0, service: 0, overall: 0 };
+
+function buildStars(containerId, key) {
+  const container = document.getElementById(containerId);
+  for (let i = 1; i <= 5; i++) {
+    const btn = document.createElement('button');
+    btn.dataset.star = i;
+    btn.textContent  = '★';
+    btn.className    = 'text-2xl text-gray-600 hover:text-gold transition-colors';
+    btn.addEventListener('click', () => {
+      ratings[key] = i;
+      container.querySelectorAll('button').forEach(b => {
+        b.classList.toggle('text-gold',   +b.dataset.star <= i);
+        b.classList.toggle('text-gray-600', +b.dataset.star >  i);
+      });
+    });
+    container.appendChild(btn);
+  }
+}
+
+function initReview() {
+  buildStars('stars-food',    'food');
+  buildStars('stars-service', 'service');
+  buildStars('stars-overall', 'overall');
+}
+
+async function submitReview() {
+  const errEl = document.getElementById('review-error');
+  errEl.classList.add('hidden');
+
+  if (!ratings.food || !ratings.service || !ratings.overall) {
+    errEl.textContent = 'Please rate food, service, and overall before submitting.';
+    errEl.classList.remove('hidden');
+    return;
+  }
+
+  const selVal  = document.getElementById('problem-item-select').value;
+  const payload = {
+    order_id:       parseInt(orderId),
+    food_rating:    ratings.food,
+    service_rating: ratings.service,
+    overall_rating: ratings.overall,
+    comment:        document.getElementById('review-comment').value.trim(),
+  };
+  if (selVal) payload.problem_item_id = parseInt(selVal);
+
+  try {
+    const res  = await fetch('/api/reviews/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (res.ok) {
+      document.getElementById('review-form-wrap').classList.add('hidden');
+      document.getElementById('review-thanks').classList.remove('hidden');
+    } else {
+      const key = Object.keys(data)[0];
+      errEl.textContent = Array.isArray(data[key]) ? data[key][0] : JSON.stringify(data);
+      errEl.classList.remove('hidden');
+    }
+  } catch {
+    errEl.textContent = 'Could not submit. Please try again.';
+    errEl.classList.remove('hidden');
+  }
+}
+
+// ── util ──────────────────────────────────────────────────────────────────────
 function showFetchError(msg) {
   document.getElementById('restaurant-name').textContent = 'Error';
   document.getElementById('footer-note').textContent = msg;
@@ -177,9 +381,23 @@ function esc(str) {
     .replace(/"/g, '&quot;');
 }
 
-// boot — fetch immediately, then poll every 6s
+// ── boot ──────────────────────────────────────────────────────────────────────
+document.getElementById('help-btn').addEventListener('click', requestHelp);
+initReview();
 fetchStatus();
 pollTimer = setInterval(fetchStatus, 6000);
+
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    clearInterval(pollTimer);
+    pollTimer = null;
+  } else if (!pollTimer) {
+    fetchStatus();
+    pollTimer = setInterval(fetchStatus, 6000);
+  }
+});
+
+lucide.createIcons();
 </script>
 </body>
 </html>
