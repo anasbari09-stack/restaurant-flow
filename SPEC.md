@@ -4,9 +4,13 @@
 3-day school MVP. One restaurant, table QR ordering, 4 staff dashboards, simple loyalty points.
 
 ## Core entities
-Restaurant, Table (qr_token, server_name), MenuItem (category: food/drink/dessert, is_featured, image_url),
-Customer (phone, loyalty_points, total_spent), Order (server_name snapshot), OrderItem (status: NEW/PREPARING/READY/SERVED),
-HelpAlert, Review (food_rating, service_rating, overall_rating, problem_item)
+Restaurant, Server (name, passcode, is_active), Table (qr_token, server FK), MenuItem (category: food/drink/dessert, is_featured, image_url),
+Customer (phone, loyalty_points, total_spent), Order (server FK + server_name snapshot), OrderItem (status: NEW/PREPARING/READY/SERVED),
+HelpAlert (kind: call/cancel), Review (food_rating, service_rating, overall_rating, problem_item)
+
+Server identity rule: Order.server (FK) is the stable "who" and survives renames/deactivation
+(SET_NULL); Order.server_name is the immutable label at order time and the display fallback when
+the FK is null (legacy or customer self-orders).
 
 ## Customer flow
 1. Scan QR -> menu page for that table: GET /api/menu/?table=<qr_token>
@@ -21,8 +25,20 @@ HelpAlert, Review (food_rating, service_rating, overall_rating, problem_item)
 - Update status: PATCH /api/staff/order-items/<id>/
 - Admin: GET /api/admin/stats/ (incl. per-serveur performance), all orders, reviews
 - Menu management: CRUD /api/admin/menu-items/
-- Table management: CRUD /api/admin/tables/ (assign server_name per table)
+- Table management: CRUD /api/admin/tables/ (assign Server per table)
 - Help alerts: POST /api/orders/<id>/help/, resolve via /api/staff/help-alerts/<id>/resolve/
+
+## Serveur flow
+- Login by passcode: POST /api/serveur/login/  (stores server_id in session), logout: POST /api/serveur/logout/
+- Dashboard: GET /api/serveur/dashboard/ — my tables, active orders, ready-to-serve items, open requests
+- Assisted ordering: POST /api/serveur/orders/ — reuses OrderCreateSerializer; attributes the order
+  to the acting serveur (server FK + server_name snapshot). For customers who can't scan, have no phone,
+  or prefer ordering directly. Phone optional; loyalty still accrues if a phone is given.
+- Mark served / resolve requests reuse the existing staff order-item and help-alert endpoints.
+
+## Customer Table Hub
+- QR target is a per-table hub (GET /?table=<token>) with: browse menu / order, track current order,
+  add more items, call serveur, request cancellation, leave review (when SERVED), view loyalty (if phone).
 
 ## Day 1 target (vertical slice)
 - Models + Django admin registration
@@ -51,3 +67,21 @@ HelpAlert, Review (food_rating, service_rating, overall_rating, problem_item)
 - server_name snapshot stored on each Order at creation time
 - Help-alert flow (customer calls server; staff resolves)
 - Test-data cleanup management command
+
+## Phase 2 — new direction (in progress)
+Goal: make the workflow feel like a real restaurant product, not a pile of features.
+1. Server profile model + passcode login (replaces free-text table assignment).
+2. Serveur dashboard: assigned tables, active/ready orders, open service requests.
+3. Assisted ordering from the serveur dashboard (reuses order-creation logic).
+4. Customer Table Hub landing page after QR scan.
+5. Unified service requests (call serveur / cancellation) via HelpAlert.kind.
+Order.server FK keeps serveur analytics stable across renames/deactivation.
+
+Postponed: live order reassignment, serveur shift management, item edit/removal after submit,
+cancellation execution (CANCELED status — request+acknowledge only for now), password hashing,
+multi-restaurant.
+
+## Documentation plan
+Keep docs minimal for now (SPEC.md + CLAUDE.md). Add later, not yet:
+- README.md — human/project overview and setup
+- DECISIONS.md — key technical/product decisions and their rationale

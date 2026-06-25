@@ -12,9 +12,14 @@
 - Order.status is a computed property derived from its items, not a stored DB column
 - Customers identified by phone number only — no login/password for customers
 - Staff have simple login (admin/kitchen/drinks/dessert roles)
-- Each Table has an assignable server_name; Order.server_name is a snapshot taken at
-  order-creation time so reassigning a table never re-attributes historical orders/reviews
-- Admin stats aggregate per-serveur performance from the Order.server_name snapshot
+- Serveurs are a Server model (name, passcode, is_active) with their own passcode login
+  (session server_id) — kept simple, no password hashing for v1
+- Tables are assigned to a Server (Table.server FK), not free text
+- Order.server (FK, SET_NULL) is the stable serveur identity for analytics; Order.server_name
+  remains an immutable snapshot/display fallback for null-FK or legacy orders
+- Assisted ordering reuses OrderCreateSerializer; the serveur endpoint injects the acting Server
+  so the order is attributed to them. The public customer order path stays untouched.
+- Admin stats aggregate per-serveur performance by the Order.server FK (name as fallback)
 
 ## Frontend conventions
 - Tailwind via CDN: <script src="https://cdn.tailwindcss.com"></script>
