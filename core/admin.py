@@ -65,7 +65,7 @@ class ReviewAdmin(admin.ModelAdmin):
 
 @admin.register(HelpAlert)
 class HelpAlertAdmin(admin.ModelAdmin):
-    list_display    = ['id', 'order', 'created_at', 'resolved']
+    list_display    = ['id', 'order', 'table', 'created_at', 'resolved']
     list_filter     = ['resolved']
     list_editable   = ['resolved']
     readonly_fields = ['created_at']

@@ -81,6 +81,7 @@
         <i data-lucide="bell" class="w-5 h-5 text-gold"></i>
         <span class="flex-1 text-left font-semibold text-white">Need help? Call a serveur</span>
       </button>
+      <p id="call-sent-standalone" class="hidden text-center text-sm text-green-400 font-medium">A serveur is on the way 👍</p>
 
       <!-- Loyalty -->
       <section class="bg-card border border-white/10 rounded-2xl p-5">
@@ -177,20 +178,18 @@ function render(data) {
 }
 
 async function callServeur() {
-  const active = state.data && state.data.active_orders[0];
-  if (!active) {
-    // No order yet — help alerts attach to an order, so guide the customer.
-    alert('Please start an order first, or ask a nearby staff member for help.');
-    return;
-  }
+  // Table-level help works whether or not an order exists yet.
   try {
-    const res = await fetch(`/api/orders/${active.id}/help/`, {
+    const res = await fetch('/api/table/help/', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
-      body: JSON.stringify({}),
+      body: JSON.stringify({ table: state.tableToken }),
     });
     if (res.ok) {
       document.getElementById('call-sent').classList.remove('hidden');
+      document.getElementById('call-sent-standalone').classList.remove('hidden');
+      const b1 = document.getElementById('call-btn'); if (b1) b1.disabled = true;
+      const b2 = document.getElementById('call-btn-standalone'); if (b2) b2.disabled = true;
     }
   } catch {
     // ignore — they can tap again

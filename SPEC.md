@@ -42,8 +42,12 @@ the FK is null (legacy or customer self-orders).
 
 ## Customer Table Hub
 - QR target is a per-table hub (page GET /?table=<token>; data GET /api/table/?table=<token>) with:
-  browse menu / order, track current order, add more items, call serveur (HelpAlert on the active order),
-  leave review (when an order is SERVED with no review), view loyalty (GET /api/customer/?phone=).
+  browse menu / order, track current order, add more items, call serveur, leave review (when an order
+  is SERVED with no review), view loyalty (GET /api/customer/?phone=).
+- Call serveur works before any order exists: POST /api/table/help/ creates a table-level HelpAlert.
+  HelpAlert.order is nullable and HelpAlert.table is set for table-level alerts; serveur dashboard and
+  admin stats derive the table from order.table or table.
+- Order tracking page has a "Back to Table Home" link and a prominent "Leave a review" CTA when SERVED.
 - Cancellation request: postponed — needs HelpAlert.kind to distinguish call vs cancel (see Phase 2).
 
 ## Day 1 target (vertical slice)

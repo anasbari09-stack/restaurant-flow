@@ -348,11 +348,12 @@ class ServeurDashboardView(APIView):
             {
                 'id': a.id,
                 'order_id': a.order_id,
-                'table_number': a.order.table.number,
+                'table_number': a.resolved_table.number if a.resolved_table else None,
                 'minutes_waiting': int((now - a.created_at).total_seconds() // 60),
             }
-            for a in HelpAlert.objects.filter(resolved=False, order__table_id__in=table_ids)
-                               .select_related('order__table')
+            for a in HelpAlert.objects.filter(resolved=False)
+                               .filter(Q(order__table_id__in=table_ids) | Q(table_id__in=table_ids))
+                               .select_related('order__table', 'table')
                                .order_by('created_at')
         ]
 
@@ -418,10 +419,11 @@ class ServeurHelpAlertResolveView(APIView):
         if server is None:
             return Response({'error': 'Serveur login required.'}, status=401)
         try:
-            alert = HelpAlert.objects.select_related('order__table').get(pk=pk)
+            alert = HelpAlert.objects.select_related('order__table', 'table').get(pk=pk)
         except HelpAlert.DoesNotExist:
             return Response({'error': 'Alert not found.'}, status=404)
-        if alert.order.table.server_id != server.id:
+        alert_table = alert.resolved_table
+        if alert_table is None or alert_table.server_id != server.id:
             return Response({'error': 'This alert is not at one of your tables.'}, status=403)
         alert.resolved = True
         alert.save(update_fields=['resolved'])
@@ -500,6 +502,25 @@ class OrderHelpAlertView(APIView):
         except Order.DoesNotExist:
             return Response({'error': 'Order not found.'}, status=404)
         alert, created = HelpAlert.objects.get_or_create(order=order, resolved=False)
+        return Response({'id': alert.id, 'created': created},
+                        status=201 if created else 200)
+
+
+class TableHelpAlertView(APIView):
+    """Table-level help alert from the Table Hub — lets a customer call the
+    serveur before any order exists. Deduplicates on the open alert per table."""
+    authentication_classes = [EnforceCsrfAuthentication]
+    permission_classes = []
+
+    def post(self, request):
+        token = str(request.data.get('table', '')).strip()
+        if not token:
+            return Response({'error': 'table is required.'}, status=400)
+        try:
+            table = Table.objects.get(qr_token=token)
+        except (Table.DoesNotExist, ValueError, DjangoValidationError):
+            return Response({'error': 'Invalid table token.'}, status=404)
+        alert, created = HelpAlert.objects.get_or_create(table=table, resolved=False)
         return Response({'id': alert.id, 'created': created},
                         status=201 if created else 200)
 
@@ -583,11 +604,11 @@ class AdminStatsView(APIView):
             {
                 'id': a.id,
                 'order_id': a.order_id,
-                'table_number': a.order.table.number,
+                'table_number': a.resolved_table.number if a.resolved_table else None,
                 'minutes_waiting': int((now - a.created_at).total_seconds() // 60),
             }
             for a in HelpAlert.objects.filter(resolved=False)
-                               .select_related('order__table')
+                               .select_related('order__table', 'table')
                                .order_by('created_at')
         ]
 

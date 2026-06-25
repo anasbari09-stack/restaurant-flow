@@ -151,12 +151,27 @@ class StaffPasscode(models.Model):
 
 
 class HelpAlert(models.Model):
-    order      = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='help_alerts')
+    # A help alert can be raised against an order (from the tracking page) or
+    # against just a table (from the Table Hub, before any order exists). At
+    # least one of order/table is set; the view derives the table from whichever.
+    order      = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='help_alerts',
+                                   null=True, blank=True)
+    table      = models.ForeignKey(Table, on_delete=models.CASCADE, related_name='help_alerts',
+                                   null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     resolved   = models.BooleanField(default=False)
 
+    @property
+    def resolved_table(self):
+        """The table this alert belongs to, whether raised via order or table."""
+        if self.table_id:
+            return self.table
+        if self.order_id:
+            return self.order.table
+        return None
+
     def __str__(self):
-        return f'HelpAlert #{self.pk} — Order #{self.order_id} (resolved={self.resolved})'
+        return f'HelpAlert #{self.pk} (resolved={self.resolved})'
 
 
 class Review(models.Model):

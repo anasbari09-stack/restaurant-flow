@@ -93,6 +93,9 @@
   <header class="bg-card border-b border-white/10 sticky top-0 z-10">
     <div class="max-w-2xl mx-auto px-4 py-4 flex items-center justify-between">
       <div>
+        <a id="home-link" href="#" class="hidden items-center gap-1 text-xs text-gray-400 hover:text-gold mb-1">
+          &larr; Back to Table Home
+        </a>
         <h1 id="restaurant-name" class="font-display text-xl font-bold text-gold">Loading…</h1>
         <p id="table-label" class="text-sm text-gray-400"></p>
       </div>
@@ -115,6 +118,12 @@
       <p class="text-xs font-semibold uppercase tracking-widest mb-1 text-gray-500" id="banner-label">Status</p>
       <p id="banner-status" class="font-display text-3xl font-bold animate-pulse">Loading…</p>
     </div>
+
+    <!-- Prominent review CTA (shown when SERVED and not yet reviewed) -->
+    <button id="review-cta" onclick="scrollToReview()"
+      class="hidden w-full bg-gold hover:bg-gold-h text-black font-bold py-3.5 rounded-xl transition-colors">
+      &#x2B50; Leave a review
+    </button>
 
     <!-- Items list -->
     <section>
@@ -320,6 +329,12 @@ function renderOrder(data) {
   document.getElementById('order-label').textContent     = `Order #${data.id}`;
   document.title = `Order #${data.id}`;
 
+  // back-to-hub link (needs the table token from the order payload)
+  const homeLink = document.getElementById('home-link');
+  homeLink.href = `/?table=${encodeURIComponent(data.table_token)}`;
+  homeLink.classList.remove('hidden');
+  homeLink.classList.add('inline-flex');
+
   // banner
   const s = STATUS_STYLE[data.status] || STATUS_STYLE.NEW;
   const banner = document.getElementById('status-banner');
@@ -375,6 +390,9 @@ function renderOrder(data) {
 
   // review section — only when SERVED
   const reviewWrap = document.getElementById('review-wrap');
+  const reviewCta  = document.getElementById('review-cta');
+  // Prominent CTA at the top: only when there's a review still to leave.
+  reviewCta.classList.toggle('hidden', !(data.status === 'SERVED' && !data.has_review));
   if (data.status === 'SERVED') {
     const wasHidden = reviewWrap.classList.contains('hidden');
     reviewWrap.classList.remove('hidden');
@@ -535,6 +553,11 @@ async function submitReview() {
 function showFetchError(msg) {
   document.getElementById('restaurant-name').textContent = 'Error';
   document.getElementById('footer-note').textContent = msg;
+}
+
+function scrollToReview() {
+  const el = document.getElementById('review-wrap');
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 function esc(str) {
