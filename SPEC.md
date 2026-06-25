@@ -13,8 +13,9 @@ Server identity rule: Order.server (FK) is the stable "who" and survives renames
 the FK is null (legacy or customer self-orders).
 
 ## Customer flow
-1. Scan QR -> menu page for that table: GET /api/menu/?table=<qr_token>
-2. Add items to cart (client-side state)
+1. Scan QR -> Table Hub for that table: GET /?table=<qr_token> (data: GET /api/table/?table=<qr_token>)
+   From the hub: browse menu, track/add to active order, call serveur, review when served, check loyalty.
+2. Browse menu -> GET /api/menu/?table=<qr_token>; add items to cart (client-side state)
 3. Submit order: POST /api/orders/
 4. Track status, polling every 5-8s: GET /api/orders/<id>/
 5. Leave a review after order is served: POST /api/reviews/
@@ -40,8 +41,10 @@ the FK is null (legacy or customer self-orders).
   menu page via /menu/?table=<token>&assisted=1.
 
 ## Customer Table Hub
-- QR target is a per-table hub (GET /?table=<token>) with: browse menu / order, track current order,
-  add more items, call serveur, request cancellation, leave review (when SERVED), view loyalty (if phone).
+- QR target is a per-table hub (page GET /?table=<token>; data GET /api/table/?table=<token>) with:
+  browse menu / order, track current order, add more items, call serveur (HelpAlert on the active order),
+  leave review (when an order is SERVED with no review), view loyalty (GET /api/customer/?phone=).
+- Cancellation request: postponed — needs HelpAlert.kind to distinguish call vs cancel (see Phase 2).
 
 ## Day 1 target (vertical slice)
 - Models + Django admin registration

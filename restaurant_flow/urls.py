@@ -7,6 +7,7 @@ from api.views import MenuPageView
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/', include('api.urls')),
+    path('', ensure_csrf_cookie(TemplateView.as_view(template_name='table_hub.html')), name='table_hub'),
     path('menu/', MenuPageView.as_view(), name='menu'),
     path('order/<int:order_id>/', ensure_csrf_cookie(TemplateView.as_view(template_name='order_tracking.html')), name='order_tracking'),
     path('staff/login/', ensure_csrf_cookie(TemplateView.as_view(template_name='staff_login.html')), name='staff_login'),

@@ -1,5 +1,6 @@
 from decimal import Decimal
 
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from django.middleware.csrf import get_token
 from django.shortcuts import render
@@ -97,6 +98,87 @@ class MenuView(APIView):
             'restaurant': {'name': table.restaurant.name},
             'featured': featured,
             'menu': grouped,
+        })
+
+
+class TableHubView(APIView):
+    """One aggregated payload for the customer Table Hub (QR landing page):
+    table number, assigned serveur, active orders, and the latest order that is
+    served but not yet reviewed. Reuses the same active-order rule as the orders
+    list (non-empty and not fully SERVED)."""
+    authentication_classes = []
+    permission_classes = []
+
+    def get(self, request):
+        token = request.query_params.get('table', '').strip()
+        if not token:
+            return Response({'error': 'table parameter is required.'}, status=400)
+        try:
+            table = Table.objects.select_related('restaurant', 'server').get(qr_token=token)
+        except (Table.DoesNotExist, ValueError, DjangoValidationError):
+            return Response({'error': 'Invalid table token.'}, status=404)
+
+        # Prefer the live serveur FK (active only); fall back to the snapshot text
+        # so a table assigned via the legacy free-text field still shows a name.
+        if table.server and table.server.is_active:
+            server_name = table.server.name
+        else:
+            server_name = table.server_name
+
+        orders = (
+            Order.objects
+            .filter(table=table)
+            .prefetch_related('items')
+            .select_related('review')
+            .annotate(item_count=Count('items'))
+            .order_by('-created_at')
+        )
+
+        active_orders = []
+        reviewable_order_id = None
+        for o in orders:
+            if o.item_count == 0:
+                continue
+            if o.status != 'SERVED':
+                active_orders.append({
+                    'id': o.id,
+                    'status': o.status,
+                    'created_at': o.created_at,
+                    'item_count': o.item_count,
+                })
+            elif reviewable_order_id is None:
+                try:
+                    o.review
+                except Review.DoesNotExist:
+                    reviewable_order_id = o.id
+
+        return Response({
+            'table': {'id': table.id, 'number': table.number},
+            'restaurant': {'name': table.restaurant.name},
+            'server_name': server_name,
+            'active_orders': active_orders,
+            'reviewable_order_id': reviewable_order_id,
+        })
+
+
+class CustomerLookupView(APIView):
+    """Loyalty lookup by phone for the Table Hub. Read-only; never creates a
+    customer (creation happens only when an order is placed with a phone)."""
+    authentication_classes = []
+    permission_classes = []
+
+    def get(self, request):
+        phone = request.query_params.get('phone', '').strip()
+        if not phone:
+            return Response({'error': 'phone parameter is required.'}, status=400)
+        customer = Customer.objects.filter(phone=phone).first()
+        if customer is None:
+            return Response({'found': False})
+        return Response({
+            'found': True,
+            'phone': customer.phone,
+            'loyalty_points': customer.loyalty_points,
+            'total_spent': str(customer.total_spent),
         })
 
 

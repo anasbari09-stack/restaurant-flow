@@ -1,6 +1,6 @@
 from django.urls import path
 from .views import (
-    MenuView, OrderCreateView, OrderDetailView,
+    MenuView, TableHubView, CustomerLookupView, OrderCreateView, OrderDetailView,
     StaffLoginView, StaffLogoutView, StaffOrderItemsView, StaffOrderItemAdvanceView,
     ServerLoginView, ServerLogoutView,
     ServeurDashboardView, ServeurOrderCreateView, ServeurServeItemView,
@@ -12,6 +12,8 @@ from .views import (
 
 urlpatterns = [
     path('menu/', MenuView.as_view()),
+    path('table/', TableHubView.as_view()),
+    path('customer/', CustomerLookupView.as_view()),
     path('orders/', OrderCreateView.as_view()),
     path('orders/<int:pk>/', OrderDetailView.as_view()),
     path('orders/<int:pk>/help/', OrderHelpAlertView.as_view()),
