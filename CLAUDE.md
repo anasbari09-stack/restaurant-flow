@@ -12,6 +12,9 @@
 - Order.status is a computed property derived from its items, not a stored DB column
 - Customers identified by phone number only — no login/password for customers
 - Staff have simple login (admin/kitchen/drinks/dessert roles)
+- Each Table has an assignable server_name; Order.server_name is a snapshot taken at
+  order-creation time so reassigning a table never re-attributes historical orders/reviews
+- Admin stats aggregate per-serveur performance from the Order.server_name snapshot
 
 ## Frontend conventions
 - Tailwind via CDN: <script src="https://cdn.tailwindcss.com"></script>
@@ -33,3 +36,4 @@
 - Run `python manage.py makemigrations && python manage.py migrate` after any model change
 - After every new endpoint, show me how to test it (curl command or Django admin steps)
 - Never expand scope beyond SPEC.md without asking me first
+- Do not commit db.sqlite3, __pycache__, or .pyc files (see .gitignore) — source + migrations only

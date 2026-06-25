@@ -28,6 +28,64 @@
     }
   </script>
   <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    /* ── skeleton shimmer ──────────────────────────────────────────────────── */
+    .skel-row {
+      height: 56px; border-radius: 12px;
+      background: linear-gradient(90deg, #141414 25%, #1f1f1f 37%, #141414 63%);
+      background-size: 400% 100%;
+      animation: shimmer 1.4s ease infinite;
+    }
+    @keyframes shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+
+    /* ── progress stepper ──────────────────────────────────────────────────── */
+    .step-fill { transition: width .6s cubic-bezier(.4,0,.2,1); }
+    .step-dot  { transition: background-color .4s ease, border-color .4s ease, color .4s ease; }
+    .step-dot.current { animation: dotPulse 1.6s ease-in-out infinite; }
+    @keyframes dotPulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(212,165,32,.55); }
+      50%      { box-shadow: 0 0 0 7px rgba(212,165,32,0); }
+    }
+
+    /* ── status-change feedback ────────────────────────────────────────────── */
+    .pulse-once { animation: pulseOnce .6s ease; }
+    @keyframes pulseOnce { 0% { transform: scale(1); } 40% { transform: scale(1.035); } 100% { transform: scale(1); } }
+    .glow { animation: glowPulse 1.8s ease-in-out 2; }
+    @keyframes glowPulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(212,165,32,0); }
+      50%      { box-shadow: 0 0 30px 2px rgba(212,165,32,.35); }
+    }
+    .item-flash { animation: itemFlash 1.3s ease; }
+    @keyframes itemFlash { 0% { background-color: rgba(212,165,32,.20); } 100% { background-color: transparent; } }
+
+    /* ── reveals ───────────────────────────────────────────────────────────── */
+    .reveal-in { animation: revealIn .5s ease; }
+    @keyframes revealIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+    .pop-in { animation: popIn .5s cubic-bezier(.2,.8,.2,1); }
+    @keyframes popIn { from { opacity: 0; transform: scale(.8); } to { opacity: 1; transform: scale(1); } }
+
+    /* ── live dot ──────────────────────────────────────────────────────────── */
+    .live-dot { animation: livePulse 1.6s ease-in-out infinite; }
+    @keyframes livePulse { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
+
+    /* ── confetti ──────────────────────────────────────────────────────────── */
+    .confetti-piece {
+      position: absolute; top: -5vh; width: 8px; height: 14px; border-radius: 2px;
+      will-change: transform, opacity;
+      animation-name: confettiFall; animation-timing-function: cubic-bezier(.4,.2,.6,1);
+      animation-fill-mode: forwards;
+    }
+    @keyframes confettiFall {
+      to { transform: translate(var(--drift, 0), 110vh) rotate(720deg); opacity: .7; }
+    }
+
+    /* ── respect reduced motion ────────────────────────────────────────────── */
+    @media (prefers-reduced-motion: reduce) {
+      .skel-row, .step-dot.current, .pulse-once, .glow, .item-flash,
+      .reveal-in, .pop-in, .live-dot, .confetti-piece { animation: none !important; }
+      .step-fill { transition: none !important; }
+    }
+  </style>
 </head>
 <body class="bg-surface text-gray-100 font-sans min-h-screen">
 
@@ -38,16 +96,24 @@
         <h1 id="restaurant-name" class="font-display text-xl font-bold text-gold">Loading…</h1>
         <p id="table-label" class="text-sm text-gray-400"></p>
       </div>
-      <span id="order-label" class="text-sm font-mono text-gray-400"></span>
+      <div class="flex items-center gap-2.5">
+        <span id="live-indicator" class="hidden items-center gap-1 text-[10px] uppercase tracking-wide text-gray-400">
+          <span class="live-dot w-1.5 h-1.5 rounded-full bg-green-400 inline-block"></span>Live
+        </span>
+        <span id="order-label" class="text-sm font-mono text-gray-400"></span>
+      </div>
     </div>
   </header>
 
   <main class="max-w-2xl mx-auto px-4 py-6 space-y-6">
 
+    <!-- Progress stepper -->
+    <div id="status-stepper" class="px-1 pt-1"></div>
+
     <!-- Overall status banner -->
     <div id="status-banner" class="rounded-2xl px-6 py-6 text-center border border-white/10 transition-colors">
       <p class="text-xs font-semibold uppercase tracking-widest mb-1 text-gray-500" id="banner-label">Status</p>
-      <p id="banner-status" class="font-display text-3xl font-bold">—</p>
+      <p id="banner-status" class="font-display text-3xl font-bold animate-pulse">Loading…</p>
     </div>
 
     <!-- Items list -->
@@ -56,7 +122,11 @@
         <h2 class="font-display text-base font-semibold text-gold">Your items</h2>
         <div class="mt-1 w-8 h-px bg-gold/40"></div>
       </div>
-      <div id="items-list" class="space-y-2"></div>
+      <div id="items-list" class="space-y-2">
+        <div class="skel-row"></div>
+        <div class="skel-row"></div>
+        <div class="skel-row"></div>
+      </div>
     </section>
 
     <!-- Help button (visible while active, hidden when SERVED) -->
@@ -144,6 +214,70 @@ const orderId = window.location.pathname.split('/').filter(Boolean).pop();
 let tableToken = null;
 let pollTimer  = null;
 
+// ── presentation state (Phase A glow-up — no effect on order logic) ───────────
+const STEPS       = ['NEW', 'PREPARING', 'READY', 'SERVED'];
+const STEP_LABELS = { NEW: 'New', PREPARING: 'Preparing', READY: 'Ready', SERVED: 'Served' };
+const REDUCE      = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+let prevStatus    = null;
+const prevItemStatus = {};
+
+// ── progress stepper ──────────────────────────────────────────────────────────
+function initStepper() {
+  const dots = STEPS.map((st, i) => `
+    <div class="flex flex-col items-center gap-1.5 z-10">
+      <div id="step-dot-${i}" class="step-dot w-7 h-7 rounded-full border-2 bg-card-2 border-white/15 text-gray-500 flex items-center justify-center text-xs font-bold"></div>
+      <span id="step-label-${i}" class="text-[10px] font-medium text-gray-500">${STEP_LABELS[st]}</span>
+    </div>`).join('');
+  document.getElementById('status-stepper').innerHTML = `
+    <div class="relative">
+      <div class="absolute left-0 right-0 top-[14px] h-0.5 bg-white/10"></div>
+      <div id="step-fill" class="step-fill absolute left-0 top-[14px] h-0.5 bg-gold" style="width:0%"></div>
+      <div class="relative flex justify-between">${dots}</div>
+    </div>`;
+}
+
+function updateStepper(status) {
+  const idx  = Math.max(0, STEPS.indexOf(status));
+  const fill = document.getElementById('step-fill');
+  if (fill) fill.style.width = (idx / (STEPS.length - 1) * 100) + '%';
+  STEPS.forEach((st, i) => {
+    const dot   = document.getElementById('step-dot-' + i);
+    const label = document.getElementById('step-label-' + i);
+    if (!dot) return;
+    const reached = i <= idx, done = i < idx, cur = i === idx;
+    dot.className = 'step-dot w-7 h-7 rounded-full border-2 flex items-center justify-center text-xs font-bold '
+      + (reached ? 'bg-gold border-gold text-black' : 'bg-card-2 border-white/15 text-gray-500')
+      + (cur ? ' current' : '');
+    dot.textContent = done ? '✓' : '';
+    if (label) label.className = 'text-[10px] font-medium ' + (reached ? 'text-gold' : 'text-gray-500');
+  });
+}
+
+// ── celebration (one-shot on status advance) ──────────────────────────────────
+function celebrate(status) {
+  if (REDUCE) return;
+  confettiBurst(status === 'SERVED' ? 90 : 40);
+}
+
+function confettiBurst(count) {
+  if (REDUCE) return;
+  const colors = ['#d4a520', '#ffffff', '#34d399', '#2dd4bf', '#f59e0b'];
+  const wrap = document.createElement('div');
+  wrap.className = 'fixed inset-0 pointer-events-none z-50 overflow-hidden';
+  for (let i = 0; i < count; i++) {
+    const p = document.createElement('div');
+    p.className = 'confetti-piece';
+    p.style.left = (Math.random() * 100) + 'vw';
+    p.style.background = colors[i % colors.length];
+    p.style.animationDuration = (1.8 + Math.random() * 1.4) + 's';
+    p.style.animationDelay = (Math.random() * 0.3) + 's';
+    p.style.setProperty('--drift', (Math.random() * 200 - 100) + 'px');
+    wrap.appendChild(p);
+  }
+  document.body.appendChild(wrap);
+  setTimeout(() => wrap.remove(), 3400);
+}
+
 function getCsrfToken() {
   const match = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
   return match ? match[1] : '';
@@ -190,7 +324,25 @@ function renderOrder(data) {
   const s = STATUS_STYLE[data.status] || STATUS_STYLE.NEW;
   const banner = document.getElementById('status-banner');
   banner.className = `rounded-2xl px-6 py-6 text-center border border-white/10 transition-colors ${s.banner}`;
-  document.getElementById('banner-status').textContent = s.label;
+  const bannerStatus = document.getElementById('banner-status');
+  bannerStatus.classList.remove('animate-pulse');
+  bannerStatus.textContent = s.label;
+
+  // progress stepper + status-change feedback
+  updateStepper(data.status);
+  const statusChanged = prevStatus !== null && data.status !== prevStatus;
+  if (statusChanged) {
+    banner.classList.remove('pulse-once'); void banner.offsetWidth; banner.classList.add('pulse-once');
+    if (data.status === 'READY' || data.status === 'SERVED') {
+      banner.classList.remove('glow'); void banner.offsetWidth; banner.classList.add('glow');
+      celebrate(data.status);
+    }
+  }
+
+  // live indicator (hidden once served)
+  const live = document.getElementById('live-indicator');
+  live.classList.toggle('hidden', data.status === 'SERVED');
+  live.classList.toggle('inline-flex', data.status !== 'SERVED');
 
   // items
   const list = document.getElementById('items-list');
@@ -198,7 +350,10 @@ function renderOrder(data) {
   data.items.forEach(item => {
     const cs = STATUS_STYLE[item.status] || STATUS_STYLE.NEW;
     const row = document.createElement('div');
-    row.className = 'bg-card border border-white/[0.06] rounded-xl px-4 py-3 flex items-center justify-between';
+    const itemChanged = prevItemStatus[item.id] && prevItemStatus[item.id] !== item.status;
+    row.className = 'bg-card border border-white/[0.06] rounded-xl px-4 py-3 flex items-center justify-between'
+      + (itemChanged ? ' item-flash' : '');
+    prevItemStatus[item.id] = item.status;
     row.innerHTML = `
       <div class="flex-1 min-w-0">
         <p class="font-medium text-white">${esc(item.name)}</p>
@@ -221,7 +376,9 @@ function renderOrder(data) {
   // review section — only when SERVED
   const reviewWrap = document.getElementById('review-wrap');
   if (data.status === 'SERVED') {
+    const wasHidden = reviewWrap.classList.contains('hidden');
     reviewWrap.classList.remove('hidden');
+    if (wasHidden) { reviewWrap.classList.remove('reveal-in'); void reviewWrap.offsetWidth; reviewWrap.classList.add('reveal-in'); }
     const sel = document.getElementById('problem-item-select');
     if (sel.options.length === 1) {
       data.items.forEach(item => {
@@ -234,7 +391,10 @@ function renderOrder(data) {
     }
     if (data.has_review) {
       document.getElementById('review-form-wrap').classList.add('hidden');
-      document.getElementById('review-thanks').classList.remove('hidden');
+      const thanks = document.getElementById('review-thanks');
+      const thanksHidden = thanks.classList.contains('hidden');
+      thanks.classList.remove('hidden');
+      if (thanksHidden) thanks.classList.add('pop-in');
     }
   } else {
     reviewWrap.classList.add('hidden');
@@ -245,6 +405,8 @@ function renderOrder(data) {
   note.textContent = data.status === 'SERVED'
     ? 'Your order is complete! Thank you for dining with us.'
     : 'This page updates automatically every 6 seconds.';
+
+  prevStatus = data.status;
 }
 
 // ── sibling orders ────────────────────────────────────────────────────────────
@@ -308,7 +470,7 @@ function buildStars(containerId, key) {
     const btn = document.createElement('button');
     btn.dataset.star = i;
     btn.textContent  = '★';
-    btn.className    = 'text-2xl text-gray-600 hover:text-gold transition-colors';
+    btn.className    = 'text-2xl text-gray-600 hover:text-gold transition hover:scale-125 origin-center';
     btn.addEventListener('click', () => {
       ratings[key] = i;
       container.querySelectorAll('button').forEach(b => {
@@ -355,7 +517,9 @@ async function submitReview() {
     const data = await res.json();
     if (res.ok) {
       document.getElementById('review-form-wrap').classList.add('hidden');
-      document.getElementById('review-thanks').classList.remove('hidden');
+      const thanks = document.getElementById('review-thanks');
+      thanks.classList.remove('hidden');
+      thanks.classList.add('pop-in');
     } else {
       const key = Object.keys(data)[0];
       errEl.textContent = Array.isArray(data[key]) ? data[key][0] : JSON.stringify(data);
@@ -383,6 +547,7 @@ function esc(str) {
 
 // ── boot ──────────────────────────────────────────────────────────────────────
 document.getElementById('help-btn').addEventListener('click', requestHelp);
+initStepper();
 initReview();
 fetchStatus();
 pollTimer = setInterval(fetchStatus, 6000);
