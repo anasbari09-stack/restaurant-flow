@@ -7,7 +7,7 @@ from .views import (
     ServeurHelpAlertResolveView,
     ReviewCreateView, OrderHelpAlertView, StaffHelpAlertResolveView, AdminStatsView,
     AdminMenuItemListCreateView, AdminMenuItemDetailView,
-    AdminTableListCreateView, AdminTableDetailView,
+    AdminTableListCreateView, AdminTableDetailView, AdminServerListView,
 )
 
 urlpatterns = [
@@ -35,4 +35,5 @@ urlpatterns = [
     path('admin/menu-items/<int:pk>/', AdminMenuItemDetailView.as_view()),
     path('admin/tables/', AdminTableListCreateView.as_view()),
     path('admin/tables/<int:pk>/', AdminTableDetailView.as_view()),
+    path('admin/servers/', AdminServerListView.as_view()),
 ]

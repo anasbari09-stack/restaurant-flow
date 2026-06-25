@@ -780,6 +780,9 @@ class AdminTableListCreateView(APIView):
         if Table.objects.filter(restaurant=restaurant, number=number).exists():
             return Response({'error': f'Table {number} already exists.'}, status=400)
         table = serializer.save(restaurant=restaurant)
+        # Keep the display snapshot in sync with the assigned Server FK.
+        table.server_name = table.server.name if table.server else ''
+        table.save(update_fields=['server_name'])
         table.order_count = 0
         return Response(TableAdminSerializer(table).data, status=201)
 
@@ -804,7 +807,10 @@ class AdminTableDetailView(APIView):
         if new_number is not None and new_number != table.number:
             if Table.objects.filter(restaurant=table.restaurant, number=new_number).exists():
                 return Response({'error': f'Table {new_number} already exists.'}, status=400)
-        serializer.save()
+        saved = serializer.save()
+        # Keep the display snapshot in sync with the assigned Server FK.
+        saved.server_name = saved.server.name if saved.server else ''
+        saved.save(update_fields=['server_name'])
         table = Table.objects.annotate(order_count=Count('orders')).get(pk=pk)
         return Response(TableAdminSerializer(table).data)
 
@@ -824,6 +830,18 @@ class AdminTableDetailView(APIView):
             )
         table.delete()
         return Response(status=204)
+
+
+class AdminServerListView(APIView):
+    """Admin-only: list active serveurs for the table-assignment dropdown."""
+    authentication_classes = []
+    permission_classes = []
+
+    def get(self, request):
+        if request.session.get('staff_role') != 'admin':
+            return Response({'error': 'Admin access required.'}, status=403)
+        servers = Server.objects.filter(is_active=True).order_by('name')
+        return Response([{'id': s.id, 'name': s.name} for s in servers])
 
 
 class MenuPageView(View):

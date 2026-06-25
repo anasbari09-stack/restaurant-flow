@@ -1,7 +1,7 @@
 from django.db import transaction
 from django.utils import timezone
 from rest_framework import serializers
-from core.models import Table, MenuItem, Customer, Order, OrderItem, Review
+from core.models import Server, Table, MenuItem, Customer, Order, OrderItem, Review
 
 DELAY_THRESHOLD_MINUTES = 15
 
@@ -34,13 +34,19 @@ class MenuItemAdminSerializer(serializers.ModelSerializer):
 
 class TableAdminSerializer(serializers.ModelSerializer):
     """Owner-facing table management. qr_token is read-only (rotation is a
-    future, guarded feature). order_count drives the delete guard in the UI."""
+    future, guarded feature). order_count drives the delete guard in the UI.
+
+    Assignment is by the Server FK (the canonical, analytics-stable identity);
+    server_name is a read-only display snapshot the view keeps in sync."""
     qr_token    = serializers.UUIDField(read_only=True)
     order_count = serializers.IntegerField(read_only=True)
+    server      = serializers.PrimaryKeyRelatedField(
+        queryset=Server.objects.all(), allow_null=True, required=False)
+    server_name = serializers.CharField(read_only=True)
 
     class Meta:
         model = Table
-        fields = ['id', 'number', 'server_name', 'qr_token', 'order_count']
+        fields = ['id', 'number', 'server', 'server_name', 'qr_token', 'order_count']
 
     def validate_number(self, value):
         if value < 1:

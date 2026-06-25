@@ -26,7 +26,8 @@ the FK is null (legacy or customer self-orders).
 - Update status: PATCH /api/staff/order-items/<id>/
 - Admin: GET /api/admin/stats/ (per-serveur performance: ratings, orders handled, revenue — grouped by Order.server FK), all orders, reviews
 - Menu management: CRUD /api/admin/menu-items/
-- Table management: CRUD /api/admin/tables/ (assign Server per table)
+- Table management: CRUD /api/admin/tables/ (assign Server per table via dropdown; the
+  Server FK is canonical and the view keeps server_name in sync). Dropdown source: GET /api/admin/servers/
 - Help alerts: POST /api/orders/<id>/help/, resolve via /api/staff/help-alerts/<id>/resolve/
 
 ## Serveur flow
