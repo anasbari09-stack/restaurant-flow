@@ -10,6 +10,15 @@ db.sqlite3
 db.sqlite3-journal
 *.log
 
+# Testing / Playwright
+.pytest_cache/
+test-results/
+playwright-report/
+screenshots/
+
+# Local design inspiration (not used by the app)
+img/
+
 # Editor / OS
 .vscode/
 .idea/

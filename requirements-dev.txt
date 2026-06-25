@@ -1,0 +1,6 @@
+# Development & testing tooling (not needed to run the app in production).
+# Install with: pip install -r requirements-dev.txt
+pytest>=8
+pytest-django>=4.8
+playwright==1.60.0
+pytest-playwright>=0.5
