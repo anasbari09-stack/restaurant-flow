@@ -8,8 +8,12 @@
 - No React in this project — explicitly out of scope for now
 
 ## Architecture decisions
-- Status (New/Preparing/Ready/Served) lives on OrderItem, not Order
-- Order.status is a computed property derived from its items, not a stored DB column
+- Status (New/Preparing/Ready/Served/Canceled) lives on OrderItem, not Order
+- Order.status is a computed property derived from its items, not a stored DB column.
+  It is computed over non-canceled items; an order with items that are all canceled is CANCELED.
+- Cancellation is order-level (executed by flipping not-yet-served items to CANCELED) and tiered:
+  NEW auto-cancels, PREPARING needs serveur/admin approve-reject, READY/SERVED not allowed. Never
+  cancel when any item is already SERVED. total_amount excludes canceled items.
 - Customers identified by phone number only — no login/password for customers
 - Staff have simple login (admin/kitchen/drinks/dessert roles)
 - Serveurs are a Server model (name, passcode, is_active) with their own passcode login

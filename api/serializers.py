@@ -112,11 +112,12 @@ class OrderDetailSerializer(serializers.ModelSerializer):
     restaurant_name = serializers.CharField(source='table.restaurant.name')
     status          = serializers.CharField(read_only=True)
     has_review      = serializers.SerializerMethodField()
+    cancel_state    = serializers.SerializerMethodField()
 
     class Meta:
         model  = Order
         fields = ['id', 'status', 'created_at', 'table_number', 'table_token',
-                  'restaurant_name', 'items', 'has_review']
+                  'restaurant_name', 'items', 'has_review', 'cancel_state']
 
     def get_has_review(self, obj):
         try:
@@ -124,6 +125,19 @@ class OrderDetailSerializer(serializers.ModelSerializer):
             return True
         except Exception:
             return False
+
+    def get_cancel_state(self, obj):
+        """Durable cancellation state for the tracking UI:
+        canceled (order canceled) / pending (open cancel request) /
+        declined (cancel request was resolved without canceling) / none."""
+        if obj.status == 'CANCELED':
+            return 'canceled'
+        cancel_alerts = [a for a in obj.help_alerts.all() if a.kind == 'cancel']
+        if any(not a.resolved for a in cancel_alerts):
+            return 'pending'
+        if cancel_alerts:
+            return 'declined'
+        return 'none'
 
 
 class OrderItemInputSerializer(serializers.Serializer):

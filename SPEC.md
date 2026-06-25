@@ -53,11 +53,20 @@ the FK is null (legacy or customer self-orders).
   HelpAlert.order is nullable and HelpAlert.table is set for table-level alerts; serveur dashboard and
   admin stats derive the table from order.table or table.
 - Order tracking page has a "Back to Table Home" link and a prominent "Leave a review" CTA when SERVED.
-- Cancellation request: customers can request cancellation from the hub (when an active order exists)
-  or the tracking page (while not fully SERVED). Posts POST /api/orders/<id>/help/ with kind=cancel;
-  HelpAlert.kind distinguishes call vs cancel. Serveur dashboard and admin show cancellations in a
-  distinct section and resolve/acknowledge them. NOTE: this does not cancel/delete the order — no
-  Order CANCELED status yet (the serveur handles the physical cancellation and acknowledges).
+- Cancellation policy (tiered, keyed on computed Order.status at request time):
+  - NEW  -> auto-cancel immediately (POST /api/orders/<id>/help/ kind=cancel returns cancel_state=canceled).
+  - PREPARING -> pending serveur/admin decision (cancel_state=pending).
+  - READY/SERVED -> not allowed from the UI.
+  Decision: POST /api/orders/<id>/cancel-decision/ {decision: approve|reject} (serveur for own tables, or admin).
+  Approve cancels all not-yet-served items; reject leaves the order running. Execution guard refuses if
+  any item is already SERVED (never mix served+canceled).
+- Cancellation execution = OrderItem.status 'CANCELED'. Order.status is computed over non-canceled items;
+  all-canceled -> CANCELED. total_amount excludes canceled, so revenue/loyalty stay correct. Canceled
+  items drop out of kitchen station lists automatically.
+- Customer sees durable state via OrderDetail.cancel_state (none/pending/canceled/declined): tracking page
+  shows pending/declined/canceled clearly; hub offers cancellation only at NEW/PREPARING and shows a
+  pending pill otherwise. HelpAlert.kind still distinguishes call vs cancel for staff.
+- Postponed: per-item/partial cancellation, cancellation after SERVED, refunds, undo, cancellation analytics.
 
 ## Day 1 target (vertical slice)
 - Models + Django admin registration

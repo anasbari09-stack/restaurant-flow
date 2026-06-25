@@ -171,6 +171,18 @@ function render(data) {
       `Order #${active.id} · ${active.item_count} item${active.item_count !== 1 ? 's' : ''}`;
     document.getElementById('track-btn').href = `/order/${active.id}/`;
     document.getElementById('add-btn').href = `${menuBase}&add_to=${active.id}`;
+
+    // Cancellation: offer only at NEW/PREPARING with no request already pending.
+    const cancelBtn  = document.getElementById('cancel-btn');
+    const cancelSent = document.getElementById('cancel-sent');
+    const canCancel = (active.status === 'NEW' || active.status === 'PREPARING') && !active.cancel_pending;
+    cancelBtn.classList.toggle('hidden', !canCancel);
+    if (active.cancel_pending) {
+      cancelSent.textContent = 'Cancellation requested — a serveur is coming to confirm.';
+      cancelSent.classList.remove('hidden');
+    } else {
+      cancelSent.classList.add('hidden');
+    }
   } else {
     // No active order — offer a standalone "call serveur" entry instead.
     document.getElementById('call-btn-standalone').classList.remove('hidden');
@@ -206,18 +218,28 @@ async function requestCancel() {
   // Cancellation is tied to the active order (only shown when one exists).
   const active = state.data && state.data.active_orders[0];
   if (!active) return;
+  const btn = document.getElementById('cancel-btn');
+  if (btn) btn.disabled = true;
   try {
     const res = await fetch(`/api/orders/${active.id}/help/`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
       body: JSON.stringify({ kind: 'cancel' }),
     });
+    const data = await res.json().catch(() => ({}));
     if (res.ok) {
-      document.getElementById('cancel-sent').classList.remove('hidden');
-      const b = document.getElementById('cancel-btn'); if (b) b.disabled = true;
+      const sent = document.getElementById('cancel-sent');
+      // NEW auto-cancels instantly; PREPARING becomes a pending request.
+      sent.textContent = data.cancel_state === 'canceled'
+        ? 'Your order has been canceled.'
+        : 'Cancellation requested — a serveur is coming to confirm.';
+      sent.classList.remove('hidden');
+      if (btn) btn.classList.add('hidden');
+    } else if (btn) {
+      btn.disabled = false;
     }
   } catch {
-    // ignore — they can tap again
+    if (btn) btn.disabled = false;
   }
 }
 

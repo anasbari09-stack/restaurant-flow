@@ -99,19 +99,26 @@ class Order(models.Model):
 
     @property
     def total_amount(self):
+        # Canceled items never count toward the bill, loyalty, or revenue.
         return sum(i.menu_item.price * i.quantity
-                   for i in self.items.select_related('menu_item').all())
+                   for i in self.items.exclude(status='CANCELED').select_related('menu_item'))
 
     @property
     def status(self):
         statuses = set(self.items.values_list('status', flat=True))
         if not statuses:
             return 'NEW'
-        if statuses == {'SERVED'}:
+        # Status is computed over non-canceled items. If items exist but all are
+        # canceled, the order itself is CANCELED. A partially-canceled order whose
+        # remaining items are served still reports SERVED (loyalty/reviews intact).
+        active = statuses - {'CANCELED'}
+        if not active:
+            return 'CANCELED'
+        if active == {'SERVED'}:
             return 'SERVED'
-        if 'READY' in statuses:
+        if 'READY' in active:
             return 'READY'
-        if 'PREPARING' in statuses:
+        if 'PREPARING' in active:
             return 'PREPARING'
         return 'NEW'
 
@@ -125,6 +132,7 @@ class OrderItem(models.Model):
         ('PREPARING', 'Preparing'),
         ('READY', 'Ready'),
         ('SERVED', 'Served'),
+        ('CANCELED', 'Canceled'),
     ]
     order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='items')
     menu_item = models.ForeignKey(MenuItem, on_delete=models.PROTECT, related_name='order_items')

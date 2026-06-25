@@ -52,6 +52,26 @@ def award_loyalty_if_served(order_id):
             locked.save(update_fields=['loyalty_awarded'])
 
 
+def cancel_order_items(order):
+    """Cancel all not-yet-served items of an order (order-level cancellation).
+
+    Returns (ok, error). Refuses if any item is already SERVED so we never create
+    a mixed served+canceled order — that keeps revenue/loyalty trivially correct.
+    """
+    if order.items.filter(status='SERVED').exists():
+        return False, 'This order can no longer be canceled — an item was already served.'
+    order.items.exclude(status__in=['SERVED', 'CANCELED']).update(status='CANCELED')
+    return True, None
+
+
+def can_manage_order(request, order):
+    """True if the requester is an admin or the serveur assigned to the table."""
+    if request.session.get('staff_role') == 'admin':
+        return True
+    server = get_current_server(request)
+    return bool(server and order.table.server_id == server.id)
+
+
 class EnforceCsrfAuthentication(SessionAuthentication):
     """Runs Django's CSRF check for unauthenticated requests.
 
@@ -128,7 +148,7 @@ class TableHubView(APIView):
         orders = (
             Order.objects
             .filter(table=table)
-            .prefetch_related('items')
+            .prefetch_related('items', 'help_alerts')
             .select_related('review')
             .annotate(item_count=Count('items'))
             .order_by('-created_at')
@@ -137,14 +157,18 @@ class TableHubView(APIView):
         active_orders = []
         reviewable_order_id = None
         for o in orders:
-            if o.item_count == 0:
+            if o.item_count == 0 or o.status == 'CANCELED':
                 continue
             if o.status != 'SERVED':
+                cancel_pending = any(
+                    a.kind == 'cancel' and not a.resolved for a in o.help_alerts.all()
+                )
                 active_orders.append({
                     'id': o.id,
                     'status': o.status,
                     'created_at': o.created_at,
                     'item_count': o.item_count,
+                    'cancel_pending': cancel_pending,
                 })
             elif reviewable_order_id is None:
                 try:
@@ -214,7 +238,7 @@ class OrderCreateView(APIView):
                 'item_count': o.item_count,
             }
             for o in orders
-            if o.item_count > 0 and o.status != 'SERVED'
+            if o.item_count > 0 and o.status not in ('SERVED', 'CANCELED')
         ]
         return Response(active)
 
@@ -234,7 +258,7 @@ class OrderDetailView(APIView):
         try:
             order = (Order.objects
                      .select_related('table__restaurant', 'review')
-                     .prefetch_related('items__menu_item')
+                     .prefetch_related('items__menu_item', 'help_alerts')
                      .get(pk=pk))
         except Order.DoesNotExist:
             return Response({'error': 'Order not found.'}, status=404)
@@ -320,8 +344,9 @@ class ServeurDashboardView(APIView):
         active_orders = []
         ready_items = []
         for o in orders:
-            # Empty orders default to status NEW forever; skip them and completed ones.
-            if o.item_count == 0 or o.status == 'SERVED':
+            # Empty orders default to status NEW forever; skip them, plus completed
+            # and canceled orders.
+            if o.item_count == 0 or o.status in ('SERVED', 'CANCELED'):
                 continue
             items = list(o.items.all())
             active_orders.append({
@@ -471,8 +496,9 @@ class StaffOrderItemAdvanceView(APIView):
             item = OrderItem.objects.get(pk=pk)
         except OrderItem.DoesNotExist:
             return Response({'error': 'Item not found.'}, status=404)
-        if item.status == 'SERVED':
-            return Response({'error': 'Item is already served.'}, status=400)
+        if item.status not in NEXT_STATUS:
+            # SERVED or CANCELED — nothing to advance.
+            return Response({'error': f'Item cannot be advanced from {item.status}.'}, status=400)
         item.status = NEXT_STATUS[item.status]
         item.save()
 
@@ -505,11 +531,68 @@ class OrderHelpAlertView(APIView):
         kind = str(request.data.get('kind', 'call')).strip() or 'call'
         if kind not in ('call', 'cancel'):
             return Response({'error': 'Invalid kind.'}, status=400)
-        # Dedup per kind so a call and a cancel on the same order coexist, but a
-        # repeat tap of the same kind reuses the open alert (no spam).
-        alert, created = HelpAlert.objects.get_or_create(order=order, kind=kind, resolved=False)
+
+        if kind == 'cancel':
+            return self._cancel(order)
+
+        # call: dedup the open call alert (repeat taps reuse it).
+        alert, created = HelpAlert.objects.get_or_create(order=order, kind='call', resolved=False)
         return Response({'id': alert.id, 'kind': alert.kind, 'created': created},
                         status=201 if created else 200)
+
+    def _cancel(self, order):
+        """Tiered cancellation policy keyed on the computed order status:
+        NEW -> auto-cancel now; PREPARING -> pending serveur/admin decision;
+        READY/SERVED/CANCELED -> not allowed."""
+        status = order.status
+        if status == 'NEW':
+            ok, err = cancel_order_items(order)
+            if not ok:
+                return Response({'error': err}, status=400)
+            # Record a resolved cancel alert so the action is auditable.
+            HelpAlert.objects.create(order=order, kind='cancel', resolved=True)
+            return Response({'cancel_state': 'canceled', 'order_status': order.status}, status=200)
+
+        if status == 'PREPARING':
+            alert, _ = HelpAlert.objects.get_or_create(order=order, kind='cancel', resolved=False)
+            return Response({'cancel_state': 'pending', 'id': alert.id}, status=201)
+
+        return Response(
+            {'error': 'This order can no longer be canceled here. Please ask your serveur.'},
+            status=400,
+        )
+
+
+class OrderCancelDecisionView(APIView):
+    """Serveur/admin decision on a PREPARING-tier cancellation request.
+    decision=approve cancels the order's not-yet-served items; decision=reject
+    leaves the order untouched. Either way the open cancel alert is resolved."""
+    authentication_classes = [EnforceCsrfAuthentication]
+    permission_classes = []
+
+    def post(self, request, pk):
+        try:
+            order = Order.objects.select_related('table').get(pk=pk)
+        except Order.DoesNotExist:
+            return Response({'error': 'Order not found.'}, status=404)
+        if not can_manage_order(request, order):
+            return Response({'error': 'Not allowed for this order.'}, status=403)
+
+        decision = str(request.data.get('decision', '')).strip()
+        if decision not in ('approve', 'reject'):
+            return Response({'error': "decision must be 'approve' or 'reject'."}, status=400)
+
+        alert = HelpAlert.objects.filter(order=order, kind='cancel', resolved=False).first()
+        if alert is None:
+            return Response({'error': 'No open cancellation request for this order.'}, status=404)
+
+        if decision == 'approve':
+            ok, err = cancel_order_items(order)
+            if not ok:
+                return Response({'error': err}, status=400)
+        alert.resolved = True
+        alert.save(update_fields=['resolved'])
+        return Response({'decision': decision, 'order_status': order.status})
 
 
 class TableHelpAlertView(APIView):

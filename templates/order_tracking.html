@@ -224,6 +224,7 @@ const STATUS_STYLE = {
   PREPARING: { label: 'Preparing', icon: 'flame',        chip: 'bg-amber-900/60 text-amber-300', banner: 'bg-amber-950/60 text-amber-200' },
   READY:     { label: 'Ready!',    icon: 'check-circle', chip: 'bg-green-900/60 text-green-300', banner: 'bg-green-950/60 text-green-200' },
   SERVED:    { label: 'Served',    icon: 'star',         chip: 'bg-teal-900/60 text-teal-300',   banner: 'bg-teal-950/60 text-teal-200' },
+  CANCELED:  { label: 'Canceled',  icon: 'x-circle',     chip: 'bg-red-900/60 text-red-300',     banner: 'bg-red-950/60 text-red-300' },
 };
 
 const orderId = window.location.pathname.split('/').filter(Boolean).pop();
@@ -350,7 +351,8 @@ function renderOrder(data) {
   bannerStatus.classList.remove('animate-pulse');
   bannerStatus.textContent = s.label;
 
-  // progress stepper + status-change feedback
+  // progress stepper + status-change feedback (hidden for canceled orders)
+  document.getElementById('status-stepper').classList.toggle('hidden', data.status === 'CANCELED');
   updateStepper(data.status);
   const statusChanged = prevStatus !== null && data.status !== prevStatus;
   if (statusChanged) {
@@ -361,10 +363,11 @@ function renderOrder(data) {
     }
   }
 
-  // live indicator (hidden once served)
+  // live indicator (hidden once the order is complete or canceled)
+  const finished = data.status === 'SERVED' || data.status === 'CANCELED';
   const live = document.getElementById('live-indicator');
-  live.classList.toggle('hidden', data.status === 'SERVED');
-  live.classList.toggle('inline-flex', data.status !== 'SERVED');
+  live.classList.toggle('hidden', finished);
+  live.classList.toggle('inline-flex', !finished);
 
   // items
   const list = document.getElementById('items-list');
@@ -392,8 +395,27 @@ function renderOrder(data) {
 
   lucide.createIcons();
 
-  // help button — visible while active, hidden when SERVED
-  document.getElementById('help-wrap').classList.toggle('hidden', data.status === 'SERVED');
+  // help + cancellation controls — visible while the order is still active
+  const active = data.status !== 'SERVED' && data.status !== 'CANCELED';
+  document.getElementById('help-wrap').classList.toggle('hidden', !active);
+
+  // cancellation: only offer when NEW/PREPARING and no request is in flight
+  const cancelBtn  = document.getElementById('cancel-btn');
+  const cancelSent = document.getElementById('cancel-sent');
+  const canRequestCancel = active && (data.status === 'NEW' || data.status === 'PREPARING')
+                           && data.cancel_state === 'none';
+  cancelBtn.classList.toggle('hidden', !canRequestCancel);
+  if (data.cancel_state === 'pending') {
+    cancelSent.textContent = 'Cancellation requested — a serveur is coming to confirm with you.';
+    cancelSent.className = 'text-center text-sm text-amber-300 py-2 font-medium';
+    cancelSent.classList.remove('hidden');
+  } else if (data.cancel_state === 'declined') {
+    cancelSent.textContent = 'Cancellation declined — your order continues.';
+    cancelSent.className = 'text-center text-sm text-gray-300 py-2 font-medium';
+    cancelSent.classList.remove('hidden');
+  } else {
+    cancelSent.classList.add('hidden');
+  }
 
   // review section — only when SERVED
   const reviewWrap = document.getElementById('review-wrap');
@@ -406,7 +428,7 @@ function renderOrder(data) {
     if (wasHidden) { reviewWrap.classList.remove('reveal-in'); void reviewWrap.offsetWidth; reviewWrap.classList.add('reveal-in'); }
     const sel = document.getElementById('problem-item-select');
     if (sel.options.length === 1) {
-      data.items.forEach(item => {
+      data.items.filter(item => item.status !== 'CANCELED').forEach(item => {
         const opt = document.createElement('option');
         opt.value = item.id;
         opt.textContent = `${esc(item.name)} x${item.quantity}`;
@@ -495,7 +517,8 @@ async function requestCancel() {
       body: JSON.stringify({ kind: 'cancel' }),
     });
   } catch {}
-  document.getElementById('cancel-sent').classList.remove('hidden');
+  // Re-fetch so the durable cancel_state (auto-canceled vs pending) drives the UI.
+  fetchStatus();
 }
 
 // ── review ────────────────────────────────────────────────────────────────────

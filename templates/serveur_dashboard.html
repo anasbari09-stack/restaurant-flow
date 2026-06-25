@@ -142,13 +142,47 @@ function renderRequests(alerts, sectionId, containerId, kind) {
         ${title}
         <p class="text-xs ${kind === 'cancel' ? 'text-red-700' : 'text-amber-700'} mt-0.5">${orderLabel}waiting ${a.minutes_waiting} min</p>
       </div>`;
-    const btn = document.createElement('button');
-    btn.className = btnCls;
-    btn.textContent = kind === 'cancel' ? 'Acknowledge' : 'Resolve';
-    btn.addEventListener('click', () => resolveAlert(a.id, btn));
-    card.appendChild(btn);
+
+    const actions = document.createElement('div');
+    actions.className = 'flex-shrink-0 flex items-center gap-1.5';
+    if (kind === 'cancel') {
+      // Approve = cancel the order's unserved items; Reject = order continues.
+      const approve = document.createElement('button');
+      approve.className = 'text-xs font-semibold px-3 py-1.5 rounded-lg bg-red-700 hover:bg-red-800 text-white transition-colors';
+      approve.textContent = 'Approve';
+      approve.addEventListener('click', () => decideCancel(a.order_id, 'approve', approve));
+      const reject = document.createElement('button');
+      reject.className = 'text-xs font-semibold px-3 py-1.5 rounded-lg border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 transition-colors';
+      reject.textContent = 'Reject';
+      reject.addEventListener('click', () => decideCancel(a.order_id, 'reject', reject));
+      actions.append(approve, reject);
+    } else {
+      const btn = document.createElement('button');
+      btn.className = btnCls;
+      btn.textContent = 'Resolve';
+      btn.addEventListener('click', () => resolveAlert(a.id, btn));
+      actions.appendChild(btn);
+    }
+    card.appendChild(actions);
     container.appendChild(card);
   });
+}
+
+async function decideCancel(orderId, decision, btn) {
+  btn.disabled = true;
+  try {
+    const res = await fetch(`/api/orders/${orderId}/cancel-decision/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
+      body: JSON.stringify({ decision }),
+    });
+    if (res.status === 401) { window.location.href = '/serveur/login/'; return; }
+  } catch {
+    // ignore — polling resyncs
+  } finally {
+    btn.disabled = false;
+  }
+  fetchDashboard();
 }
 
 function renderReady(items) {

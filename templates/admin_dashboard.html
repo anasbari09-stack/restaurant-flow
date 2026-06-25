@@ -156,14 +156,29 @@ function renderAlerts(alerts) {
       <p class="text-sm font-semibold ${isCancel ? 'text-red-800' : 'text-amber-800'}">
         ${tag} &nbsp; Table ${a.table_number}${orderLabel}</p>
       <p class="text-xs ${isCancel ? 'text-red-600' : 'text-amber-600'} mt-0.5">${a.minutes_waiting} min ago</p>`;
-    const btn = document.createElement('button');
-    btn.className = isCancel
-      ? 'text-xs font-semibold px-3 py-1.5 rounded-lg bg-red-700 hover:bg-red-800 text-white transition-colors'
-      : 'text-xs font-semibold px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white transition-colors';
-    btn.textContent = isCancel ? 'Acknowledge' : 'Resolve';
-    btn.addEventListener('click', () => resolveAlert(a.id, btn));
     row.appendChild(info);
-    row.appendChild(btn);
+
+    if (isCancel) {
+      // Approve cancels the order's unserved items; Reject lets it continue.
+      const actions = document.createElement('div');
+      actions.className = 'flex items-center gap-1.5';
+      const approve = document.createElement('button');
+      approve.className = 'text-xs font-semibold px-3 py-1.5 rounded-lg bg-red-700 hover:bg-red-800 text-white transition-colors';
+      approve.textContent = 'Approve';
+      approve.addEventListener('click', () => decideCancel(a.order_id, 'approve', approve));
+      const reject = document.createElement('button');
+      reject.className = 'text-xs font-semibold px-3 py-1.5 rounded-lg border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 transition-colors';
+      reject.textContent = 'Reject';
+      reject.addEventListener('click', () => decideCancel(a.order_id, 'reject', reject));
+      actions.append(approve, reject);
+      row.appendChild(actions);
+    } else {
+      const btn = document.createElement('button');
+      btn.className = 'text-xs font-semibold px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white transition-colors';
+      btn.textContent = 'Resolve';
+      btn.addEventListener('click', () => resolveAlert(a.id, btn));
+      row.appendChild(btn);
+    }
     container.appendChild(row);
   });
 }
@@ -176,6 +191,19 @@ async function resolveAlert(alertId, btn) {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
       body: JSON.stringify({}),
+    });
+  } catch {}
+  btn.disabled = false;
+  pollAlerts();
+}
+
+async function decideCancel(orderId, decision, btn) {
+  btn.disabled = true;
+  try {
+    await fetch(`/api/orders/${orderId}/cancel-decision/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
+      body: JSON.stringify({ decision }),
     });
   } catch {}
   btn.disabled = false;
