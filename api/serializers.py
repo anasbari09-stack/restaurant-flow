@@ -185,7 +185,9 @@ class OrderCreateSerializer(serializers.Serializer):
                      .filter(pk=order_id, table=data['table'])
                      .prefetch_related('items')
                      .first())
-            if order is not None and order.status != 'SERVED':
+            # Only append to a still-active order. A SERVED order is complete and
+            # a CANCELED order must not be revived — both fall back to a new order.
+            if order is not None and order.status not in ('SERVED', 'CANCELED'):
                 data['append_order'] = order
         return data
 

@@ -310,14 +310,16 @@ async function fetchStatus() {
       return;
     }
     renderOrder(data);
-    if (data.status === 'SERVED') {
+    if (data.status === 'SERVED' || data.status === 'CANCELED') {
+      // Terminal states — stop polling.
       clearInterval(pollTimer);
       pollTimer = null;
     }
     if (data.table_token) {
       tableToken = data.table_token;
       const link = document.getElementById('order-more-link');
-      if (link.getAttribute('href') === '#') {
+      // Don't offer "Order more items" on a canceled (terminal) order.
+      if (link.getAttribute('href') === '#' && data.status !== 'CANCELED') {
         // Carry this order's id so new items append to it (server only appends
         // while it's still active; a fully-served order falls back to a new one).
         link.href = `/menu/?table=${data.table_token}&add_to=${orderId}`;
@@ -415,6 +417,12 @@ function renderOrder(data) {
     cancelSent.classList.remove('hidden');
   } else {
     cancelSent.classList.add('hidden');
+  }
+
+  // A canceled order is terminal — don't offer "Order more items" on it
+  // (the customer can start fresh from the Table Home / menu).
+  if (data.status === 'CANCELED') {
+    document.getElementById('order-more-wrap').classList.add('hidden');
   }
 
   // review section — only when SERVED
