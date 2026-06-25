@@ -31,6 +31,26 @@ def get_current_server(request):
     return Server.objects.filter(pk=server_id, is_active=True).first()
 
 
+def award_loyalty_if_served(order_id):
+    """Award loyalty points exactly once when all items in the order are SERVED.
+
+    select_for_update() locks the Order row so concurrent calls on the same
+    order's final items block here and see loyalty_awarded=True on retry. Shared
+    by the staff station advance and the serveur "serve" action.
+    """
+    with transaction.atomic():
+        locked = Order.objects.select_for_update().get(pk=order_id)
+        if not locked.loyalty_awarded and locked.customer_id and locked.status == 'SERVED':
+            total  = locked.total_amount
+            points = int(total // 10)
+            Customer.objects.filter(pk=locked.customer_id).update(
+                loyalty_points=F('loyalty_points') + points,
+                total_spent=F('total_spent') + total,
+            )
+            locked.loyalty_awarded = True
+            locked.save(update_fields=['loyalty_awarded'])
+
+
 class EnforceCsrfAuthentication(SessionAuthentication):
     """Runs Django's CSRF check for unauthenticated requests.
 
@@ -191,6 +211,141 @@ class ServerLogoutView(APIView):
         return Response({'ok': True})
 
 
+class ServeurDashboardView(APIView):
+    """One aggregated payload for the logged-in serveur: their tables, active
+    orders, items ready to serve, and open help/cancellation requests."""
+    authentication_classes = []
+    permission_classes = []
+
+    def get(self, request):
+        server = get_current_server(request)
+        if server is None:
+            return Response({'error': 'Serveur login required.'}, status=401)
+
+        tables = list(Table.objects.filter(server=server).order_by('number'))
+        table_ids = [t.id for t in tables]
+        now = timezone.now()
+
+        orders = (
+            Order.objects
+            .filter(table_id__in=table_ids)
+            .select_related('table')
+            .prefetch_related('items__menu_item')
+            .annotate(item_count=Count('items'))
+            .order_by('-created_at')
+        )
+
+        active_orders = []
+        ready_items = []
+        for o in orders:
+            # Empty orders default to status NEW forever; skip them and completed ones.
+            if o.item_count == 0 or o.status == 'SERVED':
+                continue
+            items = list(o.items.all())
+            active_orders.append({
+                'id': o.id,
+                'table_number': o.table.number,
+                'table_token': str(o.table.qr_token),
+                'status': o.status,
+                'created_at': o.created_at,
+                'waiting_minutes': int((now - o.created_at).total_seconds() // 60),
+                'items': [
+                    {'id': it.id, 'name': it.menu_item.name, 'quantity': it.quantity,
+                     'status': it.status, 'notes': it.notes}
+                    for it in items
+                ],
+            })
+            for it in items:
+                if it.status == 'READY':
+                    ready_items.append({
+                        'id': it.id, 'name': it.menu_item.name, 'quantity': it.quantity,
+                        'table_number': o.table.number, 'order_id': o.id,
+                    })
+
+        help_alerts = [
+            {
+                'id': a.id,
+                'order_id': a.order_id,
+                'table_number': a.order.table.number,
+                'minutes_waiting': int((now - a.created_at).total_seconds() // 60),
+            }
+            for a in HelpAlert.objects.filter(resolved=False, order__table_id__in=table_ids)
+                               .select_related('order__table')
+                               .order_by('created_at')
+        ]
+
+        return Response({
+            'server': {'id': server.id, 'name': server.name},
+            'tables': [{'id': t.id, 'number': t.number, 'qr_token': str(t.qr_token)} for t in tables],
+            'active_orders': active_orders,
+            'ready_items': ready_items,
+            'help_alerts': help_alerts,
+        })
+
+
+class ServeurOrderCreateView(APIView):
+    """Assisted ordering: a logged-in serveur places an order for a table.
+
+    Reuses OrderCreateSerializer unchanged; passing acting_server via context
+    attributes the new order to this serveur (server FK + server_name snapshot).
+    """
+    authentication_classes = [EnforceCsrfAuthentication]
+    permission_classes = []
+
+    def post(self, request):
+        server = get_current_server(request)
+        if server is None:
+            return Response({'error': 'Serveur login required.'}, status=401)
+        serializer = OrderCreateSerializer(data=request.data, context={'acting_server': server})
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=400)
+        order = serializer.save()
+        return Response({'order_id': order.id, 'status': order.status}, status=201)
+
+
+class ServeurServeItemView(APIView):
+    """Serveur marks a READY item as SERVED, scoped to their own tables."""
+    authentication_classes = [EnforceCsrfAuthentication]
+    permission_classes = []
+
+    def patch(self, request, pk):
+        server = get_current_server(request)
+        if server is None:
+            return Response({'error': 'Serveur login required.'}, status=401)
+        try:
+            item = OrderItem.objects.select_related('order__table').get(pk=pk)
+        except OrderItem.DoesNotExist:
+            return Response({'error': 'Item not found.'}, status=404)
+        if item.order.table.server_id != server.id:
+            return Response({'error': 'This item is not at one of your tables.'}, status=403)
+        if item.status != 'READY':
+            return Response({'error': 'Only items that are Ready can be served.'}, status=400)
+        item.status = 'SERVED'
+        item.save(update_fields=['status'])
+        award_loyalty_if_served(item.order_id)
+        return Response({'id': item.id, 'status': item.status})
+
+
+class ServeurHelpAlertResolveView(APIView):
+    """Serveur resolves an open help/cancellation alert at one of their tables."""
+    authentication_classes = [EnforceCsrfAuthentication]
+    permission_classes = []
+
+    def patch(self, request, pk):
+        server = get_current_server(request)
+        if server is None:
+            return Response({'error': 'Serveur login required.'}, status=401)
+        try:
+            alert = HelpAlert.objects.select_related('order__table').get(pk=pk)
+        except HelpAlert.DoesNotExist:
+            return Response({'error': 'Alert not found.'}, status=404)
+        if alert.order.table.server_id != server.id:
+            return Response({'error': 'This alert is not at one of your tables.'}, status=403)
+        alert.resolved = True
+        alert.save(update_fields=['resolved'])
+        return Response({'id': alert.id, 'resolved': True})
+
+
 class StaffOrderItemsView(APIView):
     authentication_classes = []
     permission_classes = []
@@ -236,20 +391,7 @@ class StaffOrderItemAdvanceView(APIView):
         item.status = NEXT_STATUS[item.status]
         item.save()
 
-        # Award loyalty points exactly once when all items in the order are SERVED.
-        # select_for_update() locks the Order row so concurrent PATCH calls on the
-        # same order's final items block here and see loyalty_awarded=True on retry.
-        with transaction.atomic():
-            locked = Order.objects.select_for_update().get(pk=item.order_id)
-            if not locked.loyalty_awarded and locked.customer_id and locked.status == 'SERVED':
-                total  = locked.total_amount
-                points = int(total // 10)
-                Customer.objects.filter(pk=locked.customer_id).update(
-                    loyalty_points=F('loyalty_points') + points,
-                    total_spent=F('total_spent') + total,
-                )
-                locked.loyalty_awarded = True
-                locked.save(update_fields=['loyalty_awarded'])
+        award_loyalty_if_served(item.order_id)
 
         return Response({'id': item.id, 'status': item.status})
 

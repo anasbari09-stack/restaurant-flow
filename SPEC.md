@@ -34,7 +34,10 @@ the FK is null (legacy or customer self-orders).
 - Assisted ordering: POST /api/serveur/orders/ — reuses OrderCreateSerializer; attributes the order
   to the acting serveur (server FK + server_name snapshot). For customers who can't scan, have no phone,
   or prefer ordering directly. Phone optional; loyalty still accrues if a phone is given.
-- Mark served / resolve requests reuse the existing staff order-item and help-alert endpoints.
+- Mark served: PATCH /api/serveur/order-items/<id>/serve/ (READY→SERVED, scoped to own tables)
+- Resolve request: PATCH /api/serveur/help-alerts/<id>/resolve/ (scoped to own tables)
+- Pages: /serveur/login/ and /serveur/ (dashboard). Assisted ordering reuses the customer
+  menu page via /menu/?table=<token>&assisted=1.
 
 ## Customer Table Hub
 - QR target is a per-table hub (GET /?table=<token>) with: browse menu / order, track current order,

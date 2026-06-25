@@ -169,10 +169,17 @@ class OrderCreateSerializer(serializers.Serializer):
                 customer = None
                 if phone:
                     customer, _ = Customer.objects.get_or_create(phone=phone)
-                # Snapshot the table's current server so later reassignments
-                # never change who past orders/reviews are attributed to.
+                # Attribute the order to a serveur. Assisted orders (placed by a
+                # logged-in serveur) pass acting_server via context; customer
+                # self-orders fall back to the table's assigned server. The FK is
+                # the stable identity; server_name is the immutable snapshot so
+                # later reassignment never re-attributes historical orders.
+                acting_server = self.context.get('acting_server')
+                server = acting_server or table.server
                 order = Order.objects.create(
-                    table=table, customer=customer, server_name=table.server_name,
+                    table=table, customer=customer,
+                    server=server,
+                    server_name=server.name if server else table.server_name,
                 )
 
             OrderItem.objects.bulk_create([

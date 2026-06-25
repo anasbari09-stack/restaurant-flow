@@ -168,6 +168,10 @@ const state = {
   // "Order more items" passes ?add_to=<orderId> so new items append to that
   // active order instead of creating a new one (server validates appendability).
   addToOrderId: new URLSearchParams(location.search).get('add_to') || '',
+  // Assisted ordering: a logged-in serveur placing an order for the table.
+  // Posts to the serveur endpoint (attributes the order to the serveur) and
+  // returns to the serveur dashboard instead of the customer tracking page.
+  assisted: new URLSearchParams(location.search).get('assisted') === '1',
   menuData: null,
   cart: {},
   filter: 'all',
@@ -216,6 +220,13 @@ function renderPage(data) {
   document.getElementById('restaurant-name').textContent = data.restaurant.name;
   document.getElementById('table-label').textContent     = `Table ${data.table.number}`;
   document.title = data.restaurant.name;
+
+  if (state.assisted) {
+    document.getElementById('table-label').innerHTML =
+      `Table ${data.table.number} <span class="ml-1 text-xs font-semibold text-black bg-gold rounded px-1.5 py-0.5">Assisted order</span>`;
+    const orderBtn = document.getElementById('order-btn');
+    if (orderBtn) orderBtn.textContent = 'Place Order for Customer';
+  }
 
   renderOffers(data.featured || []);
 
@@ -545,8 +556,10 @@ async function submitOrder() {
   if (phone) payload.phone = phone;
   if (state.addToOrderId) payload.order_id = parseInt(state.addToOrderId);
 
+  const endpoint = state.assisted ? '/api/serveur/orders/' : '/api/orders/';
+
   try {
-    const res  = await fetch('/api/orders/', {
+    const res  = await fetch(endpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -554,6 +567,12 @@ async function submitOrder() {
       },
       body: JSON.stringify(payload),
     });
+
+    if (res.status === 401 && state.assisted) {
+      window.location.href = '/serveur/login/';
+      return;
+    }
+
     const data = await res.json();
 
     if (!res.ok) {
@@ -562,7 +581,8 @@ async function submitOrder() {
       return;
     }
 
-    window.location.href = '/order/' + data.order_id + '/';
+    // Assisted orders return the serveur to their dashboard; customers track.
+    window.location.href = state.assisted ? '/serveur/' : '/order/' + data.order_id + '/';
 
   } catch {
     errEl.textContent = 'Could not connect. Please try again.';
