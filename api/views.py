@@ -12,9 +12,10 @@ from rest_framework.authentication import SessionAuthentication
 from rest_framework.views import APIView
 from rest_framework.response import Response
 
-from core.models import Table, MenuItem, Order, OrderItem, StaffPasscode, Customer, HelpAlert, Review
+from core.models import Restaurant, Table, MenuItem, Order, OrderItem, StaffPasscode, Customer, HelpAlert, Review
 from .serializers import (
-    MenuItemSerializer, OrderCreateSerializer, OrderDetailSerializer,
+    MenuItemSerializer, MenuItemAdminSerializer, TableAdminSerializer,
+    OrderCreateSerializer, OrderDetailSerializer,
     OrderItemStationSerializer, ReviewCreateSerializer,
 )
 
@@ -334,6 +335,28 @@ class AdminStatsView(APIView):
         def r1(v):
             return round(v, 1) if v is not None else None
 
+        # Serveur performance: avg service rating grouped by the order's
+        # snapshotted server_name (blank = unassigned, excluded).
+        server_performance = [
+            {
+                'server_name':  row['order__server_name'],
+                'avg_service':  r1(row['avg_service']),
+                'avg_overall':  r1(row['avg_overall']),
+                'review_count': row['review_count'],
+            }
+            for row in (
+                Review.objects
+                .exclude(order__server_name='')
+                .values('order__server_name')
+                .annotate(
+                    avg_service=Avg('service_rating'),
+                    avg_overall=Avg('overall_rating'),
+                    review_count=Count('id'),
+                )
+                .order_by('-avg_service', '-review_count')
+            )
+        ]
+
         return Response({
             'total_orders':       total_orders,
             'total_revenue':      str(total_revenue),
@@ -344,7 +367,142 @@ class AdminStatsView(APIView):
             'most_flagged_items': most_flagged,
             'recent_reviews':     recent_reviews,
             'active_help_alerts': active_help_alerts,
+            'server_performance': server_performance,
         })
+
+
+class AdminMenuItemListCreateView(APIView):
+    """Admin-only menu management: list all items (incl. unavailable) + create."""
+    authentication_classes = [EnforceCsrfAuthentication]
+    permission_classes = []
+
+    def get(self, request):
+        if request.session.get('staff_role') != 'admin':
+            return Response({'error': 'Admin access required.'}, status=403)
+        items = MenuItem.objects.all().order_by('category', 'name')
+        return Response(MenuItemAdminSerializer(items, many=True).data)
+
+    def post(self, request):
+        if request.session.get('staff_role') != 'admin':
+            return Response({'error': 'Admin access required.'}, status=403)
+        serializer = MenuItemAdminSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=400)
+        restaurant = Restaurant.objects.first()
+        if restaurant is None:
+            return Response({'error': 'No restaurant configured.'}, status=400)
+        item = serializer.save(restaurant=restaurant)
+        return Response(MenuItemAdminSerializer(item).data, status=201)
+
+
+class AdminMenuItemDetailView(APIView):
+    """Admin-only update + guarded delete for a single menu item."""
+    authentication_classes = [EnforceCsrfAuthentication]
+    permission_classes = []
+
+    def patch(self, request, pk):
+        if request.session.get('staff_role') != 'admin':
+            return Response({'error': 'Admin access required.'}, status=403)
+        try:
+            item = MenuItem.objects.get(pk=pk)
+        except MenuItem.DoesNotExist:
+            return Response({'error': 'Item not found.'}, status=404)
+        serializer = MenuItemAdminSerializer(item, data=request.data, partial=True)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=400)
+        serializer.save()
+        return Response(serializer.data)
+
+    def delete(self, request, pk):
+        if request.session.get('staff_role') != 'admin':
+            return Response({'error': 'Admin access required.'}, status=403)
+        try:
+            item = MenuItem.objects.get(pk=pk)
+        except MenuItem.DoesNotExist:
+            return Response({'error': 'Item not found.'}, status=404)
+        # OrderItem.menu_item is PROTECT — deleting a referenced item would error
+        # and would also corrupt sales/stats history. Block it and steer the
+        # owner toward marking the item unavailable instead.
+        if item.order_items.exists():
+            return Response(
+                {'error': "This item appears in past orders, so it can't be deleted. "
+                          "Turn off its availability instead to hide it from the menu."},
+                status=400,
+            )
+        item.delete()
+        return Response(status=204)
+
+
+class AdminTableListCreateView(APIView):
+    """Admin-only table management: list tables (+ order counts) and create."""
+    authentication_classes = [EnforceCsrfAuthentication]
+    permission_classes = []
+
+    def get(self, request):
+        if request.session.get('staff_role') != 'admin':
+            return Response({'error': 'Admin access required.'}, status=403)
+        tables = (Table.objects
+                  .annotate(order_count=Count('orders'))
+                  .order_by('number'))
+        return Response(TableAdminSerializer(tables, many=True).data)
+
+    def post(self, request):
+        if request.session.get('staff_role') != 'admin':
+            return Response({'error': 'Admin access required.'}, status=403)
+        serializer = TableAdminSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=400)
+        restaurant = Restaurant.objects.first()
+        if restaurant is None:
+            return Response({'error': 'No restaurant configured.'}, status=400)
+        number = serializer.validated_data['number']
+        if Table.objects.filter(restaurant=restaurant, number=number).exists():
+            return Response({'error': f'Table {number} already exists.'}, status=400)
+        table = serializer.save(restaurant=restaurant)
+        table.order_count = 0
+        return Response(TableAdminSerializer(table).data, status=201)
+
+
+class AdminTableDetailView(APIView):
+    """Admin-only update (server/number) + guarded delete for one table."""
+    authentication_classes = [EnforceCsrfAuthentication]
+    permission_classes = []
+
+    def patch(self, request, pk):
+        if request.session.get('staff_role') != 'admin':
+            return Response({'error': 'Admin access required.'}, status=403)
+        try:
+            table = Table.objects.get(pk=pk)
+        except Table.DoesNotExist:
+            return Response({'error': 'Table not found.'}, status=404)
+        serializer = TableAdminSerializer(table, data=request.data, partial=True)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=400)
+        # If the number is changing, keep it unique within the restaurant.
+        new_number = serializer.validated_data.get('number')
+        if new_number is not None and new_number != table.number:
+            if Table.objects.filter(restaurant=table.restaurant, number=new_number).exists():
+                return Response({'error': f'Table {new_number} already exists.'}, status=400)
+        serializer.save()
+        table = Table.objects.annotate(order_count=Count('orders')).get(pk=pk)
+        return Response(TableAdminSerializer(table).data)
+
+    def delete(self, request, pk):
+        if request.session.get('staff_role') != 'admin':
+            return Response({'error': 'Admin access required.'}, status=403)
+        try:
+            table = Table.objects.get(pk=pk)
+        except Table.DoesNotExist:
+            return Response({'error': 'Table not found.'}, status=404)
+        # Order.table is PROTECT — deleting a table with orders would error and
+        # lose history. Block it with a clear message.
+        if table.orders.exists():
+            return Response(
+                {'error': "This table has orders, so it can't be deleted."},
+                status=400,
+            )
+        table.delete()
+        return Response(status=204)
 
 
 class MenuPageView(View):

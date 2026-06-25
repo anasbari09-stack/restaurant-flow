@@ -26,7 +26,7 @@
 
     <!-- Admin placeholder -->
     <div id="admin-placeholder" class="hidden bg-white rounded-2xl p-8 text-center shadow-sm">
-      <p class="text-3xl mb-3">🔧</p>
+      <p class="text-3xl mb-3">&#x1F527;</p>
       <h2 class="text-lg font-bold text-gray-900 mb-2">Admin Dashboard</h2>
       <p class="text-gray-500 text-sm mb-4">Stats and full order management are coming in Day 3.</p>
       <a href="/admin/" class="inline-block bg-gray-900 hover:bg-gray-700 text-white text-sm font-semibold px-5 py-2 rounded-xl transition-colors">
@@ -45,9 +45,9 @@
 const ROLE_LABELS = { kitchen: 'Kitchen', drinks: 'Drinks', dessert: 'Dessert', admin: 'Admin' };
 
 const CARD_STYLE = {
-  NEW:       { card: 'bg-white border border-gray-100',        badge: 'bg-blue-100 text-blue-700',   badgeText: 'New' },
-  PREPARING: { card: 'bg-white border border-amber-100',       badge: 'bg-amber-100 text-amber-700', badgeText: 'Preparing' },
-  READY:     { card: 'bg-gray-50 border border-gray-200',      badge: 'bg-green-100 text-green-700', badgeText: 'Ready' },
+  NEW:       { badge: 'bg-blue-100 text-blue-700',   badgeText: 'New' },
+  PREPARING: { badge: 'bg-amber-100 text-amber-700', badgeText: 'Preparing' },
+  READY:     { badge: 'bg-green-100 text-green-700', badgeText: 'Ready' },
 };
 
 const BTN_STYLE = {
@@ -116,22 +116,35 @@ function renderItems(items) {
     const s   = CARD_STYLE[item.status] || CARD_STYLE.NEW;
     const btn = BTN_STYLE[item.status]  || BTN_STYLE.NEW;
 
+    // card — red border if delayed, normal border otherwise
     const card = document.createElement('div');
-    card.className = `rounded-xl px-4 py-3 shadow-sm flex items-center gap-3 ${s.card}`;
+    const borderCls = item.is_delayed
+      ? 'border-2 border-red-400 bg-white'
+      : (item.status === 'READY' ? 'bg-gray-50 border border-gray-200' : 'bg-white border border-gray-100');
+    card.className = `rounded-xl px-4 py-3 shadow-sm flex items-start gap-3 ${borderCls}`;
 
     // info block
     const info = document.createElement('div');
     info.className = 'flex-1 min-w-0';
+
+    const delayBadge = item.is_delayed
+      ? `<span class="text-xs font-semibold px-2 py-0.5 rounded-full bg-red-100 text-red-700">&#x26A0; Delayed</span>`
+      : '';
+
     info.innerHTML = `
       <div class="flex items-center gap-2 flex-wrap">
         <span class="font-semibold text-gray-900">${esc(item.name)}</span>
         <span class="text-xs font-semibold px-2 py-0.5 rounded-full ${s.badge}">${s.badgeText}</span>
+        ${delayBadge}
       </div>
       <p class="text-sm text-gray-500 mt-0.5">
         &times;${item.quantity}
         ${item.notes ? `&nbsp;·&nbsp;<span class="italic">${esc(item.notes)}</span>` : ''}
       </p>
-      <p class="text-xs text-gray-400 mt-0.5">Table ${item.table_number} &nbsp;·&nbsp; Order #${item.order_id}</p>`;
+      <p class="text-xs text-gray-400 mt-0.5">
+        Table ${item.table_number} &nbsp;·&nbsp; Order #${item.order_id}
+        &nbsp;·&nbsp; Waiting: ${item.order_waiting_minutes} min
+      </p>`;
 
     // advance button
     const advBtn = document.createElement('button');

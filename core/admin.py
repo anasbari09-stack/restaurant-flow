@@ -9,8 +9,9 @@ class RestaurantAdmin(admin.ModelAdmin):
 
 @admin.register(Table)
 class TableAdmin(admin.ModelAdmin):
-    list_display = ['restaurant', 'number', 'qr_token']
+    list_display = ['restaurant', 'number', 'server_name', 'qr_token']
     list_filter = ['restaurant']
+    list_editable = ['server_name']
     readonly_fields = ['qr_token']
 
 
@@ -30,7 +31,7 @@ class CustomerAdmin(admin.ModelAdmin):
 
 @admin.register(Order)
 class OrderAdmin(admin.ModelAdmin):
-    list_display    = ['id', 'table', 'customer', 'created_at', 'loyalty_awarded']
+    list_display    = ['id', 'table', 'server_name', 'customer', 'created_at', 'loyalty_awarded']
     list_filter     = ['table__restaurant']
     readonly_fields = ['created_at', 'loyalty_awarded']
 

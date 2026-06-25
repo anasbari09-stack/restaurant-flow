@@ -1,5 +1,5 @@
 from django.core.management.base import BaseCommand
-from core.models import Restaurant, Table, MenuItem, StaffPasscode
+from core.models import Restaurant, Table, MenuItem, StaffPasscode, Order
 
 
 class Command(BaseCommand):
@@ -15,9 +15,26 @@ class Command(BaseCommand):
         else:
             self.stdout.write(f'Using existing restaurant: {restaurant.name}')
 
+        # Assign a serveur to each table so the serveur-performance chart has
+        # data. Idempotent: only fills a blank server_name, never overwrites.
+        servers = {1: 'Sara', 2: 'Youssef', 3: 'Sara', 4: 'Mehdi', 5: 'Youssef'}
         for number in range(1, 6):
-            Table.objects.get_or_create(restaurant=restaurant, number=number)
-        self.stdout.write('Tables 1–5 ready')
+            table, _ = Table.objects.get_or_create(restaurant=restaurant, number=number)
+            if not table.server_name:
+                table.server_name = servers[number]
+                table.save(update_fields=['server_name'])
+        self.stdout.write('Tables 1–5 ready (serveurs assigned)')
+
+        # Backfill existing orders that predate the snapshot field, so historical
+        # reviews light up the serveur chart. Only touches blank snapshots.
+        backfilled = 0
+        for order in Order.objects.filter(server_name='').select_related('table'):
+            if order.table.server_name:
+                order.server_name = order.table.server_name
+                order.save(update_fields=['server_name'])
+                backfilled += 1
+        if backfilled:
+            self.stdout.write(f'Backfilled server_name on {backfilled} existing orders')
 
         IMG = 'https://images.unsplash.com/photo-{}?w=800&q=80'
         # (name, category, price, description, image photo-id, is_featured)

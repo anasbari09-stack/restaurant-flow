@@ -14,6 +14,10 @@ class Table(models.Model):
     restaurant = models.ForeignKey(Restaurant, on_delete=models.CASCADE, related_name='tables')
     number = models.PositiveIntegerField()
     qr_token = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    server_name = models.CharField(
+        max_length=100, blank=True,
+        help_text="Waiter/serveur currently assigned to this table.",
+    )
 
     class Meta:
         unique_together = [('restaurant', 'number')]
@@ -63,6 +67,9 @@ class Order(models.Model):
     )
     created_at      = models.DateTimeField(auto_now_add=True)
     loyalty_awarded = models.BooleanField(default=False)
+    # Snapshot of the table's assigned server at order-creation time, so that
+    # reassigning a table later never re-attributes historical reviews.
+    server_name     = models.CharField(max_length=100, blank=True)
 
     @property
     def total_amount(self):

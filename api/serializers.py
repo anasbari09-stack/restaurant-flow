@@ -12,6 +12,42 @@ class MenuItemSerializer(serializers.ModelSerializer):
         fields = ['id', 'name', 'description', 'price', 'category', 'image_url', 'is_featured']
 
 
+class MenuItemAdminSerializer(serializers.ModelSerializer):
+    """Owner-facing menu editing. Separate from the public serializer so the
+    customer payload never changes, and so admins can see/set is_available."""
+    class Meta:
+        model = MenuItem
+        fields = ['id', 'name', 'description', 'price', 'category',
+                  'is_available', 'is_featured', 'image_url']
+
+    def validate_name(self, value):
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError('Name is required.')
+        return value
+
+    def validate_price(self, value):
+        if value < 0:
+            raise serializers.ValidationError('Price must be zero or greater.')
+        return value
+
+
+class TableAdminSerializer(serializers.ModelSerializer):
+    """Owner-facing table management. qr_token is read-only (rotation is a
+    future, guarded feature). order_count drives the delete guard in the UI."""
+    qr_token    = serializers.UUIDField(read_only=True)
+    order_count = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = Table
+        fields = ['id', 'number', 'server_name', 'qr_token', 'order_count']
+
+    def validate_number(self, value):
+        if value < 1:
+            raise serializers.ValidationError('Table number must be 1 or greater.')
+        return value
+
+
 class OrderItemStationSerializer(serializers.ModelSerializer):
     name                  = serializers.CharField(source='menu_item.name')
     table_number          = serializers.IntegerField(source='order.table.number')
@@ -133,7 +169,11 @@ class OrderCreateSerializer(serializers.Serializer):
                 customer = None
                 if phone:
                     customer, _ = Customer.objects.get_or_create(phone=phone)
-                order = Order.objects.create(table=table, customer=customer)
+                # Snapshot the table's current server so later reassignments
+                # never change who past orders/reviews are attributed to.
+                order = Order.objects.create(
+                    table=table, customer=customer, server_name=table.server_name,
+                )
 
             OrderItem.objects.bulk_create([
                 OrderItem(

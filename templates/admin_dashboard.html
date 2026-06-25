@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 min-h-screen">
+
+  <!-- Header -->
+  <header class="bg-gray-900 text-white sticky top-0 z-10">
+    <div class="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
+      <div>
+        <h1 class="text-lg font-bold">Admin Dashboard</h1>
+        <p class="text-xs text-gray-400">La Casa</p>
+      </div>
+      <div class="flex items-center gap-2">
+        <a href="/staff/admin/menu/"
+          class="text-xs font-semibold text-gray-900 bg-amber-400 hover:bg-amber-500 px-3 py-1.5 rounded-lg transition-colors">
+          Manage Menu →
+        </a>
+        <a href="/staff/admin/tables/"
+          class="text-xs font-semibold text-gray-900 bg-amber-400 hover:bg-amber-500 px-3 py-1.5 rounded-lg transition-colors">
+          Manage Tables →
+        </a>
+        <button onclick="logout()"
+          class="text-xs text-gray-400 hover:text-white border border-gray-600 hover:border-gray-400 px-3 py-1.5 rounded-lg transition-colors">
+          Log out
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-4xl mx-auto px-4 py-6 space-y-8">
+
+    <!-- Active Help Alerts (polled every 6s) -->
+    <section>
+      <h2 class="text-base font-semibold text-gray-700 mb-3">Active Help Requests</h2>
+      <div id="alerts-container">
+        <p class="text-gray-400 text-sm">Loading…</p>
+      </div>
+    </section>
+
+    <!-- Stats cards -->
+    <section>
+      <h2 class="text-base font-semibold text-gray-700 mb-3">Overview</h2>
+      <div id="stats-grid" class="grid grid-cols-2 sm:grid-cols-5 gap-3">
+        <div class="col-span-2 sm:col-span-5 text-gray-400 text-sm">Loading…</div>
+      </div>
+    </section>
+
+    <!-- Top items + Most flagged -->
+    <div class="grid sm:grid-cols-2 gap-6">
+      <section>
+        <h2 class="text-base font-semibold text-gray-700 mb-3">Top 5 by Sales</h2>
+        <div id="top-items-list" class="space-y-2"></div>
+      </section>
+      <section>
+        <h2 class="text-base font-semibold text-gray-700 mb-3">Most Flagged Items</h2>
+        <div id="flagged-items-list" class="space-y-2"></div>
+      </section>
+    </div>
+
+    <!-- Serveur performance -->
+    <section>
+      <h2 class="text-base font-semibold text-gray-700 mb-3">Serveur Performance</h2>
+      <div id="server-perf-list" class="space-y-2"></div>
+    </section>
+
+    <!-- Recent reviews -->
+    <section>
+      <h2 class="text-base font-semibold text-gray-700 mb-3">Recent Reviews</h2>
+      <div id="reviews-list" class="space-y-3"></div>
+    </section>
+
+  </main>
+
+<script>
+let pollTimer = null;
+let statsLoaded = false;
+
+function getCsrfToken() {
+  const match = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
+  return match ? match[1] : '';
+}
+
+// ── data fetch ────────────────────────────────────────────────────────────────
+async function fetchStats() {
+  try {
+    const res  = await fetch('/api/admin/stats/');
+    if (res.status === 401 || res.status === 403) {
+      window.location.href = '/staff/login/';
+      return null;
+    }
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+// ── initial load ──────────────────────────────────────────────────────────────
+async function init() {
+  const data = await fetchStats();
+  if (!data) return;
+  renderAlerts(data.active_help_alerts);
+  renderStats(data);
+  renderTopItems(data.top_items);
+  renderFlaggedItems(data.most_flagged_items);
+  renderServerPerformance(data.server_performance);
+  renderReviews(data.recent_reviews);
+  statsLoaded = true;
+  pollTimer = setInterval(pollAlerts, 6000);
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      clearInterval(pollTimer);
+      pollTimer = null;
+    } else {
+      pollAlerts();
+      pollTimer = setInterval(pollAlerts, 6000);
+    }
+  });
+}
+
+// ── poll alerts only ──────────────────────────────────────────────────────────
+async function pollAlerts() {
+  const data = await fetchStats();
+  if (data) renderAlerts(data.active_help_alerts);
+}
+
+// ── render alerts ─────────────────────────────────────────────────────────────
+function renderAlerts(alerts) {
+  const container = document.getElementById('alerts-container');
+  if (!alerts || alerts.length === 0) {
+    container.innerHTML = '<p class="text-sm text-gray-400 bg-white rounded-xl px-4 py-3 shadow-sm">No active help requests right now.</p>';
+    return;
+  }
+  container.innerHTML = '';
+  alerts.forEach(a => {
+    const row = document.createElement('div');
+    row.className = 'flex items-center justify-between bg-red-50 border border-red-200 rounded-xl px-4 py-3 shadow-sm';
+    const info = document.createElement('div');
+    info.innerHTML = `
+      <p class="text-sm font-semibold text-red-700">&#x1F198; Table ${a.table_number} &nbsp;·&nbsp; Order #${a.order_id}</p>
+      <p class="text-xs text-red-500 mt-0.5">${a.minutes_waiting} min ago</p>`;
+    const btn = document.createElement('button');
+    btn.className = 'text-xs font-semibold px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white transition-colors';
+    btn.textContent = 'Resolve';
+    btn.addEventListener('click', () => resolveAlert(a.id, btn));
+    row.appendChild(info);
+    row.appendChild(btn);
+    container.appendChild(row);
+  });
+}
+
+// ── resolve alert ─────────────────────────────────────────────────────────────
+async function resolveAlert(alertId, btn) {
+  btn.disabled = true;
+  try {
+    await fetch(`/api/staff/help-alerts/${alertId}/resolve/`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
+      body: JSON.stringify({}),
+    });
+  } catch {}
+  btn.disabled = false;
+  pollAlerts();
+}
+
+// ── render stats cards ────────────────────────────────────────────────────────
+function renderStats(data) {
+  const grid = document.getElementById('stats-grid');
+  const cards = [
+    { label: 'Total Orders',   value: data.total_orders },
+    { label: 'Revenue',        value: '$' + parseFloat(data.total_revenue).toFixed(2) },
+    { label: 'Avg Food',       value: data.avg_food_rating    != null ? data.avg_food_rating    + ' / 5' : '—' },
+    { label: 'Avg Service',    value: data.avg_service_rating != null ? data.avg_service_rating + ' / 5' : '—' },
+    { label: 'Avg Overall',    value: data.avg_overall_rating != null ? data.avg_overall_rating + ' / 5' : '—' },
+  ];
+  grid.innerHTML = '';
+  cards.forEach(c => {
+    const card = document.createElement('div');
+    card.className = 'bg-white rounded-xl px-4 py-4 shadow-sm text-center';
+    card.innerHTML = `
+      <p class="text-2xl font-bold text-gray-900">${c.value}</p>
+      <p class="text-xs text-gray-500 mt-1">${c.label}</p>`;
+    grid.appendChild(card);
+  });
+}
+
+// ── render top items ──────────────────────────────────────────────────────────
+function renderTopItems(items) {
+  const list = document.getElementById('top-items-list');
+  if (!items || items.length === 0) {
+    list.innerHTML = '<p class="text-sm text-gray-400">No sales data yet.</p>';
+    return;
+  }
+  list.innerHTML = '';
+  items.forEach((item, i) => {
+    const row = document.createElement('div');
+    row.className = 'flex items-center justify-between bg-white rounded-xl px-4 py-3 shadow-sm';
+    row.innerHTML = `
+      <div class="flex items-center gap-2 min-w-0">
+        <span class="text-sm font-bold text-gray-400 w-5">${i + 1}.</span>
+        <span class="text-sm font-medium text-gray-900 truncate">${esc(item.name)}</span>
+      </div>
+      <span class="text-sm font-semibold text-amber-600 ml-2 flex-shrink-0">${item.total_sold} sold</span>`;
+    list.appendChild(row);
+  });
+}
+
+// ── render flagged items ──────────────────────────────────────────────────────
+function renderFlaggedItems(items) {
+  const list = document.getElementById('flagged-items-list');
+  if (!items || items.length === 0) {
+    list.innerHTML = '<p class="text-sm text-gray-400">No flagged items.</p>';
+    return;
+  }
+  list.innerHTML = '';
+  items.forEach((item, i) => {
+    const row = document.createElement('div');
+    row.className = 'flex items-center justify-between bg-white rounded-xl px-4 py-3 shadow-sm';
+    row.innerHTML = `
+      <div class="flex items-center gap-2 min-w-0">
+        <span class="text-sm font-bold text-gray-400 w-5">${i + 1}.</span>
+        <span class="text-sm font-medium text-gray-900 truncate">${esc(item.name)}</span>
+      </div>
+      <span class="text-sm font-semibold text-red-500 ml-2 flex-shrink-0">${item.flag_count} flag${item.flag_count !== 1 ? 's' : ''}</span>`;
+    list.appendChild(row);
+  });
+}
+
+// ── render serveur performance ────────────────────────────────────────────────
+function renderServerPerformance(rows) {
+  const list = document.getElementById('server-perf-list');
+  if (!rows || rows.length === 0) {
+    list.innerHTML = '<p class="text-sm text-gray-400">No serveur ratings yet. Assign serveurs to tables, then collect reviews.</p>';
+    return;
+  }
+  list.innerHTML = '';
+  rows.forEach((r, i) => {
+    const best  = i === 0 && rows.length > 1;
+    const worst = i === rows.length - 1 && rows.length > 1;
+    const tag = best  ? '<span class="text-[10px] font-bold uppercase bg-green-100 text-green-700 px-1.5 py-0.5 rounded">Best</span>'
+              : worst ? '<span class="text-[10px] font-bold uppercase bg-red-100 text-red-600 px-1.5 py-0.5 rounded">Needs attention</span>'
+              : '';
+    const row = document.createElement('div');
+    row.className = 'flex items-center justify-between bg-white rounded-xl px-4 py-3 shadow-sm';
+    row.innerHTML = `
+      <div class="flex items-center gap-2 min-w-0">
+        <span class="text-sm font-bold text-gray-400 w-5">${i + 1}.</span>
+        <span class="text-sm font-medium text-gray-900 truncate">${esc(r.server_name)}</span>
+        ${tag}
+      </div>
+      <div class="text-right flex-shrink-0 ml-2">
+        <span class="text-sm font-semibold text-amber-600">${r.avg_service} / 5</span>
+        <span class="text-xs text-gray-400 ml-1">service · ${r.review_count} review${r.review_count !== 1 ? 's' : ''}</span>
+      </div>`;
+    list.appendChild(row);
+  });
+}
+
+// ── render reviews ────────────────────────────────────────────────────────────
+function renderReviews(reviews) {
+  const list = document.getElementById('reviews-list');
+  if (!reviews || reviews.length === 0) {
+    list.innerHTML = '<p class="text-sm text-gray-400">No reviews yet.</p>';
+    return;
+  }
+  list.innerHTML = '';
+  reviews.forEach(r => {
+    const card = document.createElement('div');
+    card.className = 'bg-white rounded-xl px-4 py-4 shadow-sm';
+
+    const date = new Date(r.created_at).toLocaleDateString(undefined, {
+      month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+    });
+
+    card.innerHTML = `
+      <div class="flex items-start justify-between gap-2 mb-2">
+        <div>
+          <p class="text-sm font-semibold text-gray-800">
+            Order #${r.order_id} &nbsp;·&nbsp; Table ${r.table_number}
+          </p>
+          <p class="text-xs text-gray-400">${date}</p>
+        </div>
+        <div class="flex-shrink-0 text-right text-xs text-gray-500 space-y-0.5">
+          <div>Food <span class="font-semibold text-gray-800">${stars(r.food_rating)}</span></div>
+          <div>Service <span class="font-semibold text-gray-800">${stars(r.service_rating)}</span></div>
+          <div>Overall <span class="font-semibold text-gray-800">${stars(r.overall_rating)}</span></div>
+        </div>
+      </div>
+      ${r.comment ? `<p class="text-sm text-gray-700 mb-1">${esc(r.comment)}</p>` : ''}
+      ${r.problem_item_name ? `<p class="text-xs text-red-500">Flagged: ${esc(r.problem_item_name)}</p>` : ''}`;
+
+    list.appendChild(card);
+  });
+}
+
+// ── helpers ───────────────────────────────────────────────────────────────────
+function stars(n) {
+  return '★'.repeat(n) + '☆'.repeat(5 - n);
+}
+
+function esc(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+async function logout() {
+  try {
+    await fetch('/api/staff/logout/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
+      body: JSON.stringify({}),
+    });
+  } catch {}
+  window.location.href = '/staff/login/';
+}
+
+// ── boot ──────────────────────────────────────────────────────────────────────
+init();
+</script>
+</body>
+</html>
