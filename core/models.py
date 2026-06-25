@@ -10,13 +10,34 @@ class Restaurant(models.Model):
         return self.name
 
 
+class Server(models.Model):
+    """A waiter/serveur with a simple passcode login.
+
+    Kept intentionally lightweight (no password hashing) — same trust level as
+    StaffPasscode, suitable for a single-restaurant MVP on a staff device.
+    """
+    name = models.CharField(max_length=100)
+    passcode = models.CharField(max_length=4, unique=True)
+    is_active = models.BooleanField(
+        default=True,
+        help_text="Deactivate instead of deleting so order history stays attributed.",
+    )
+
+    def __str__(self):
+        return self.name
+
+
 class Table(models.Model):
     restaurant = models.ForeignKey(Restaurant, on_delete=models.CASCADE, related_name='tables')
     number = models.PositiveIntegerField()
     qr_token = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    server = models.ForeignKey(
+        Server, on_delete=models.SET_NULL, null=True, blank=True, related_name='tables',
+        help_text="Serveur currently assigned to this table.",
+    )
     server_name = models.CharField(
         max_length=100, blank=True,
-        help_text="Waiter/serveur currently assigned to this table.",
+        help_text="Display snapshot of the assigned serveur's name; kept in sync with server.",
     )
 
     class Meta:
@@ -67,8 +88,13 @@ class Order(models.Model):
     )
     created_at      = models.DateTimeField(auto_now_add=True)
     loyalty_awarded = models.BooleanField(default=False)
-    # Snapshot of the table's assigned server at order-creation time, so that
-    # reassigning a table later never re-attributes historical reviews.
+    # server (FK) is the stable serveur identity for analytics — survives renames
+    # and deactivation (SET_NULL). server_name is the immutable snapshot taken at
+    # order-creation time and the display fallback when the FK is null (legacy or
+    # customer self-orders), so reassigning a table never re-attributes history.
+    server          = models.ForeignKey(
+        Server, on_delete=models.SET_NULL, null=True, blank=True, related_name='orders',
+    )
     server_name     = models.CharField(max_length=100, blank=True)
 
     @property

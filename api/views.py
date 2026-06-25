@@ -12,7 +12,7 @@ from rest_framework.authentication import SessionAuthentication
 from rest_framework.views import APIView
 from rest_framework.response import Response
 
-from core.models import Restaurant, Table, MenuItem, Order, OrderItem, StaffPasscode, Customer, HelpAlert, Review
+from core.models import Restaurant, Server, Table, MenuItem, Order, OrderItem, StaffPasscode, Customer, HelpAlert, Review
 from .serializers import (
     MenuItemSerializer, MenuItemAdminSerializer, TableAdminSerializer,
     OrderCreateSerializer, OrderDetailSerializer,
@@ -21,6 +21,14 @@ from .serializers import (
 
 STATION_TO_CATEGORY = {'kitchen': 'food', 'drinks': 'drink', 'dessert': 'dessert'}
 NEXT_STATUS = {'NEW': 'PREPARING', 'PREPARING': 'READY', 'READY': 'SERVED'}
+
+
+def get_current_server(request):
+    """Return the logged-in, still-active Server for this session, or None."""
+    server_id = request.session.get('server_id')
+    if not server_id:
+        return None
+    return Server.objects.filter(pk=server_id, is_active=True).first()
 
 
 class EnforceCsrfAuthentication(SessionAuthentication):
@@ -153,6 +161,33 @@ class StaffLogoutView(APIView):
 
     def post(self, request):
         request.session.pop('staff_role', None)
+        return Response({'ok': True})
+
+
+class ServerLoginView(APIView):
+    """Serveur passcode login. Mirrors StaffLoginView but uses the Server model
+    and stores server_id (not staff_role) in the session."""
+    authentication_classes = [EnforceCsrfAuthentication]
+    permission_classes = []
+
+    def post(self, request):
+        passcode = str(request.data.get('passcode', '')).strip()
+        if not passcode:
+            return Response({'error': 'Passcode is required.'}, status=400)
+        try:
+            server = Server.objects.get(passcode=passcode, is_active=True)
+        except Server.DoesNotExist:
+            return Response({'error': 'Incorrect or inactive passcode.'}, status=401)
+        request.session['server_id'] = server.id
+        return Response({'id': server.id, 'name': server.name})
+
+
+class ServerLogoutView(APIView):
+    authentication_classes = [EnforceCsrfAuthentication]
+    permission_classes = []
+
+    def post(self, request):
+        request.session.pop('server_id', None)
         return Response({'ok': True})
 
 

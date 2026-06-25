@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Restaurant, Table, MenuItem, Customer, Order, OrderItem, Review, StaffPasscode, HelpAlert
+from .models import Restaurant, Server, Table, MenuItem, Customer, Order, OrderItem, Review, StaffPasscode, HelpAlert
 
 
 @admin.register(Restaurant)
@@ -7,11 +7,19 @@ class RestaurantAdmin(admin.ModelAdmin):
     list_display = ['name', 'description']
 
 
+@admin.register(Server)
+class ServerAdmin(admin.ModelAdmin):
+    list_display = ['name', 'passcode', 'is_active']
+    list_filter = ['is_active']
+    list_editable = ['passcode', 'is_active']
+    search_fields = ['name']
+
+
 @admin.register(Table)
 class TableAdmin(admin.ModelAdmin):
-    list_display = ['restaurant', 'number', 'server_name', 'qr_token']
-    list_filter = ['restaurant']
-    list_editable = ['server_name']
+    list_display = ['restaurant', 'number', 'server', 'server_name', 'qr_token']
+    list_filter = ['restaurant', 'server']
+    list_editable = ['server']
     readonly_fields = ['qr_token']
 
 
@@ -31,8 +39,8 @@ class CustomerAdmin(admin.ModelAdmin):
 
 @admin.register(Order)
 class OrderAdmin(admin.ModelAdmin):
-    list_display    = ['id', 'table', 'server_name', 'customer', 'created_at', 'loyalty_awarded']
-    list_filter     = ['table__restaurant']
+    list_display    = ['id', 'table', 'server', 'server_name', 'customer', 'created_at', 'loyalty_awarded']
+    list_filter     = ['table__restaurant', 'server']
     readonly_fields = ['created_at', 'loyalty_awarded']
 
 
