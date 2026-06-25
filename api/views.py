@@ -347,6 +347,7 @@ class ServeurDashboardView(APIView):
         help_alerts = [
             {
                 'id': a.id,
+                'kind': a.kind,
                 'order_id': a.order_id,
                 'table_number': a.resolved_table.number if a.resolved_table else None,
                 'minutes_waiting': int((now - a.created_at).total_seconds() // 60),
@@ -501,8 +502,13 @@ class OrderHelpAlertView(APIView):
             order = Order.objects.get(pk=pk)
         except Order.DoesNotExist:
             return Response({'error': 'Order not found.'}, status=404)
-        alert, created = HelpAlert.objects.get_or_create(order=order, resolved=False)
-        return Response({'id': alert.id, 'created': created},
+        kind = str(request.data.get('kind', 'call')).strip() or 'call'
+        if kind not in ('call', 'cancel'):
+            return Response({'error': 'Invalid kind.'}, status=400)
+        # Dedup per kind so a call and a cancel on the same order coexist, but a
+        # repeat tap of the same kind reuses the open alert (no spam).
+        alert, created = HelpAlert.objects.get_or_create(order=order, kind=kind, resolved=False)
+        return Response({'id': alert.id, 'kind': alert.kind, 'created': created},
                         status=201 if created else 200)
 
 
@@ -520,8 +526,11 @@ class TableHelpAlertView(APIView):
             table = Table.objects.get(qr_token=token)
         except (Table.DoesNotExist, ValueError, DjangoValidationError):
             return Response({'error': 'Invalid table token.'}, status=404)
-        alert, created = HelpAlert.objects.get_or_create(table=table, resolved=False)
-        return Response({'id': alert.id, 'created': created},
+        kind = str(request.data.get('kind', 'call')).strip() or 'call'
+        if kind not in ('call', 'cancel'):
+            return Response({'error': 'Invalid kind.'}, status=400)
+        alert, created = HelpAlert.objects.get_or_create(table=table, kind=kind, resolved=False)
+        return Response({'id': alert.id, 'kind': alert.kind, 'created': created},
                         status=201 if created else 200)
 
 
@@ -603,6 +612,7 @@ class AdminStatsView(APIView):
         active_help_alerts = [
             {
                 'id': a.id,
+                'kind': a.kind,
                 'order_id': a.order_id,
                 'table_number': a.resolved_table.number if a.resolved_table else None,
                 'minutes_waiting': int((now - a.created_at).total_seconds() // 60),

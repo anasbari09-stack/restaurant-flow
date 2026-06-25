@@ -53,7 +53,11 @@ the FK is null (legacy or customer self-orders).
   HelpAlert.order is nullable and HelpAlert.table is set for table-level alerts; serveur dashboard and
   admin stats derive the table from order.table or table.
 - Order tracking page has a "Back to Table Home" link and a prominent "Leave a review" CTA when SERVED.
-- Cancellation request: postponed — needs HelpAlert.kind to distinguish call vs cancel (see Phase 2).
+- Cancellation request: customers can request cancellation from the hub (when an active order exists)
+  or the tracking page (while not fully SERVED). Posts POST /api/orders/<id>/help/ with kind=cancel;
+  HelpAlert.kind distinguishes call vs cancel. Serveur dashboard and admin show cancellations in a
+  distinct section and resolve/acknowledge them. NOTE: this does not cancel/delete the order — no
+  Order CANCELED status yet (the serveur handles the physical cancellation and acknowledges).
 
 ## Day 1 target (vertical slice)
 - Models + Django admin registration

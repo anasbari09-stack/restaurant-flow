@@ -151,6 +151,10 @@ class StaffPasscode(models.Model):
 
 
 class HelpAlert(models.Model):
+    KIND_CHOICES = [
+        ('call', 'Call serveur / help'),
+        ('cancel', 'Cancellation request'),
+    ]
     # A help alert can be raised against an order (from the tracking page) or
     # against just a table (from the Table Hub, before any order exists). At
     # least one of order/table is set; the view derives the table from whichever.
@@ -158,6 +162,7 @@ class HelpAlert(models.Model):
                                    null=True, blank=True)
     table      = models.ForeignKey(Table, on_delete=models.CASCADE, related_name='help_alerts',
                                    null=True, blank=True)
+    kind       = models.CharField(max_length=10, choices=KIND_CHOICES, default='call')
     created_at = models.DateTimeField(auto_now_add=True)
     resolved   = models.BooleanField(default=False)
 

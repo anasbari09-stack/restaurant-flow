@@ -57,6 +57,12 @@
           <i data-lucide="bell" class="w-4 h-4"></i><span>Call serveur</span>
         </button>
         <p id="call-sent" class="hidden text-center text-sm text-green-400 mt-2 font-medium">A serveur is on the way 👍</p>
+
+        <button id="cancel-btn" onclick="requestCancel()"
+          class="w-full mt-2 flex items-center justify-center gap-2 bg-transparent hover:bg-red-500/10 text-red-300 font-semibold py-2.5 rounded-xl border border-red-500/30 transition-colors">
+          <i data-lucide="x-circle" class="w-4 h-4"></i><span>Request cancellation</span>
+        </button>
+        <p id="cancel-sent" class="hidden text-center text-sm text-amber-300 mt-2 font-medium">A serveur will review your cancellation request.</p>
       </section>
 
       <!-- Browse / start order -->
@@ -190,6 +196,25 @@ async function callServeur() {
       document.getElementById('call-sent-standalone').classList.remove('hidden');
       const b1 = document.getElementById('call-btn'); if (b1) b1.disabled = true;
       const b2 = document.getElementById('call-btn-standalone'); if (b2) b2.disabled = true;
+    }
+  } catch {
+    // ignore — they can tap again
+  }
+}
+
+async function requestCancel() {
+  // Cancellation is tied to the active order (only shown when one exists).
+  const active = state.data && state.data.active_orders[0];
+  if (!active) return;
+  try {
+    const res = await fetch(`/api/orders/${active.id}/help/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
+      body: JSON.stringify({ kind: 'cancel' }),
+    });
+    if (res.ok) {
+      document.getElementById('cancel-sent').classList.remove('hidden');
+      const b = document.getElementById('cancel-btn'); if (b) b.disabled = true;
     }
   } catch {
     // ignore — they can tap again
