@@ -83,11 +83,19 @@ const API = '/api/admin/tables/';
 let tables = [];
 let servers = [];
 
-function serverOptionsHtml(selectedId) {
+function serverOptionsHtml(selectedId, currentName) {
   let opts = '<option value="">Unassigned</option>';
+  let found = false;
   servers.forEach(s => {
-    opts += `<option value="${s.id}" ${s.id === selectedId ? 'selected' : ''}>${esc(s.name)}</option>`;
+    const sel = s.id === selectedId;
+    if (sel) found = true;
+    opts += `<option value="${s.id}" ${sel ? 'selected' : ''}>${esc(s.name)}</option>`;
   });
+  // If the table is still assigned to a now-inactive serveur (not in the active
+  // list), keep showing it so the assignment/analytics link stays visible.
+  if (selectedId && !found && currentName) {
+    opts += `<option value="${selectedId}" selected>${esc(currentName)} (inactive)</option>`;
+  }
   return opts;
 }
 
@@ -158,7 +166,7 @@ function buildRow(t) {
           <label class="text-xs text-gray-500">Serveur:</label>
           <select data-act="server"
             class="text-sm border border-gray-200 rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-gray-800">
-            ${serverOptionsHtml(t.server)}
+            ${serverOptionsHtml(t.server, t.server_name)}
           </select>
         </div>
       </div>

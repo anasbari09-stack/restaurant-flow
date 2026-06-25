@@ -32,6 +32,26 @@ class MenuItemAdminSerializer(serializers.ModelSerializer):
         return value
 
 
+class ServerAdminSerializer(serializers.ModelSerializer):
+    """Owner-facing serveur management. Passcode must be 4 digits and unique
+    (the model's unique constraint is enforced by DRF automatically)."""
+    class Meta:
+        model = Server
+        fields = ['id', 'name', 'passcode', 'is_active']
+
+    def validate_name(self, value):
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError('Name is required.')
+        return value
+
+    def validate_passcode(self, value):
+        value = value.strip()
+        if not (value.isdigit() and len(value) == 4):
+            raise serializers.ValidationError('Passcode must be exactly 4 digits.')
+        return value
+
+
 class TableAdminSerializer(serializers.ModelSerializer):
     """Owner-facing table management. qr_token is read-only (rotation is a
     future, guarded feature). order_count drives the delete guard in the UI.

@@ -15,7 +15,7 @@ from rest_framework.response import Response
 
 from core.models import Restaurant, Server, Table, MenuItem, Order, OrderItem, StaffPasscode, Customer, HelpAlert, Review
 from .serializers import (
-    MenuItemSerializer, MenuItemAdminSerializer, TableAdminSerializer,
+    MenuItemSerializer, MenuItemAdminSerializer, TableAdminSerializer, ServerAdminSerializer,
     OrderCreateSerializer, OrderDetailSerializer,
     OrderItemStationSerializer, ReviewCreateSerializer,
 )
@@ -832,16 +832,50 @@ class AdminTableDetailView(APIView):
         return Response(status=204)
 
 
-class AdminServerListView(APIView):
-    """Admin-only: list active serveurs for the table-assignment dropdown."""
-    authentication_classes = []
+class AdminServerListCreateView(APIView):
+    """Admin-only serveur management. GET returns active serveurs by default
+    (the table-assignment dropdown source); ?include_inactive=1 returns all for
+    the management page. POST creates a serveur."""
+    authentication_classes = [EnforceCsrfAuthentication]
     permission_classes = []
 
     def get(self, request):
         if request.session.get('staff_role') != 'admin':
             return Response({'error': 'Admin access required.'}, status=403)
-        servers = Server.objects.filter(is_active=True).order_by('name')
-        return Response([{'id': s.id, 'name': s.name} for s in servers])
+        qs = Server.objects.all()
+        if not request.query_params.get('include_inactive'):
+            qs = qs.filter(is_active=True)
+        qs = qs.order_by('-is_active', 'name')
+        return Response(ServerAdminSerializer(qs, many=True).data)
+
+    def post(self, request):
+        if request.session.get('staff_role') != 'admin':
+            return Response({'error': 'Admin access required.'}, status=403)
+        serializer = ServerAdminSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=400)
+        serializer.save()
+        return Response(serializer.data, status=201)
+
+
+class AdminServerDetailView(APIView):
+    """Admin-only: edit a serveur's name/passcode or activate/deactivate.
+    No hard delete — deactivation preserves order/review/analytics history."""
+    authentication_classes = [EnforceCsrfAuthentication]
+    permission_classes = []
+
+    def patch(self, request, pk):
+        if request.session.get('staff_role') != 'admin':
+            return Response({'error': 'Admin access required.'}, status=403)
+        try:
+            server = Server.objects.get(pk=pk)
+        except Server.DoesNotExist:
+            return Response({'error': 'Serveur not found.'}, status=404)
+        serializer = ServerAdminSerializer(server, data=request.data, partial=True)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=400)
+        serializer.save()
+        return Response(serializer.data)
 
 
 class MenuPageView(View):

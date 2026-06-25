@@ -27,7 +27,11 @@ the FK is null (legacy or customer self-orders).
 - Admin: GET /api/admin/stats/ (per-serveur performance: ratings, orders handled, revenue — grouped by Order.server FK), all orders, reviews
 - Menu management: CRUD /api/admin/menu-items/
 - Table management: CRUD /api/admin/tables/ (assign Server per table via dropdown; the
-  Server FK is canonical and the view keeps server_name in sync). Dropdown source: GET /api/admin/servers/
+  Server FK is canonical and the view keeps server_name in sync).
+- Serveur management (page /staff/admin/servers/): GET /api/admin/servers/ (active only;
+  ?include_inactive=1 for all), POST create, PATCH /api/admin/servers/<id>/ (name/passcode/is_active).
+  No hard delete — deactivate to preserve history; deactivated serveurs can't log in and are
+  excluded from the table dropdown. A table still linked to a now-inactive serveur stays shown.
 - Help alerts: POST /api/orders/<id>/help/, resolve via /api/staff/help-alerts/<id>/resolve/
 
 ## Serveur flow

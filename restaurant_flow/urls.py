@@ -16,5 +16,6 @@ urlpatterns = [
     path('staff/admin/', ensure_csrf_cookie(TemplateView.as_view(template_name='admin_dashboard.html')), name='admin_dashboard'),
     path('staff/admin/menu/', ensure_csrf_cookie(TemplateView.as_view(template_name='menu_admin.html')), name='menu_admin'),
     path('staff/admin/tables/', ensure_csrf_cookie(TemplateView.as_view(template_name='tables_admin.html')), name='tables_admin'),
+    path('staff/admin/servers/', ensure_csrf_cookie(TemplateView.as_view(template_name='servers_admin.html')), name='servers_admin'),
     path('staff/<str:role>/', ensure_csrf_cookie(TemplateView.as_view(template_name='staff_dashboard.html')), name='staff_dashboard'),
 ]
