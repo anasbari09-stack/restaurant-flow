@@ -23,7 +23,7 @@ the FK is null (legacy or customer self-orders).
 - Login: POST /api/staff/login/
 - Kitchen/Drinks/Dessert: GET /api/staff/order-items/?station=<x>&status=<y>
 - Update status: PATCH /api/staff/order-items/<id>/
-- Admin: GET /api/admin/stats/ (incl. per-serveur performance), all orders, reviews
+- Admin: GET /api/admin/stats/ (per-serveur performance: ratings, orders handled, revenue — grouped by Order.server FK), all orders, reviews
 - Menu management: CRUD /api/admin/menu-items/
 - Table management: CRUD /api/admin/tables/ (assign Server per table)
 - Help alerts: POST /api/orders/<id>/help/, resolve via /api/staff/help-alerts/<id>/resolve/

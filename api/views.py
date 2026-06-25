@@ -512,27 +512,68 @@ class AdminStatsView(APIView):
         def r1(v):
             return round(v, 1) if v is not None else None
 
-        # Serveur performance: avg service rating grouped by the order's
-        # snapshotted server_name (blank = unassigned, excluded).
-        server_performance = [
-            {
-                'server_name':  row['order__server_name'],
-                'avg_service':  r1(row['avg_service']),
-                'avg_overall':  r1(row['avg_overall']),
-                'review_count': row['review_count'],
-            }
+        # Serveur performance, grouped by the stable Order.server FK so renames
+        # never split a serveur's history. Orders with no server (legacy or
+        # customer self-orders at unassigned tables) can't be attributed and are
+        # excluded. Combines orders handled, served revenue, and review ratings.
+        server_names = dict(Server.objects.values_list('id', 'name'))
+
+        orders_by_server = dict(
+            Order.objects.filter(server__isnull=False)
+            .values('server_id').annotate(c=Count('id'))
+            .values_list('server_id', 'c')
+        )
+
+        revenue_by_server = {
+            row['order__server_id']: row['rev']
+            for row in (
+                OrderItem.objects
+                .filter(status='SERVED', order__server__isnull=False)
+                .values('order__server_id')
+                .annotate(rev=Coalesce(
+                    Sum(ExpressionWrapper(
+                        F('quantity') * F('menu_item__price'),
+                        output_field=DjangoDecimalField())),
+                    Decimal('0.00')))
+            )
+        }
+
+        reviews_by_server = {
+            row['order__server_id']: row
             for row in (
                 Review.objects
-                .exclude(order__server_name='')
-                .values('order__server_name')
+                .filter(order__server__isnull=False)
+                .values('order__server_id')
                 .annotate(
                     avg_service=Avg('service_rating'),
                     avg_overall=Avg('overall_rating'),
                     review_count=Count('id'),
                 )
-                .order_by('-avg_service', '-review_count')
             )
-        ]
+        }
+
+        server_performance = []
+        for sid in set(orders_by_server) | set(reviews_by_server) | set(revenue_by_server):
+            rev = reviews_by_server.get(sid, {})
+            server_performance.append({
+                'server_id':      sid,
+                'server_name':    server_names.get(sid, ''),
+                'orders_handled': orders_by_server.get(sid, 0),
+                'revenue':        str(revenue_by_server.get(sid, Decimal('0.00')).quantize(Decimal('0.01'))),
+                'avg_service':    r1(rev.get('avg_service')),
+                'avg_overall':    r1(rev.get('avg_overall')),
+                'review_count':   rev.get('review_count', 0),
+            })
+
+        # Headline by service rating, best to worst; serveurs with no reviews
+        # fall to the bottom, ordered by orders handled.
+        server_performance.sort(
+            key=lambda r: (
+                r['avg_service'] is None,
+                -(r['avg_service'] or 0),
+                -r['orders_handled'],
+            )
+        )
 
         return Response({
             'total_orders':       total_orders,
