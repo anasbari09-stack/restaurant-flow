@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Welcome</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -17,91 +17,116 @@
     }
   </script>
   <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    @keyframes hubIn { from { opacity:0; transform: translateY(12px); } to { opacity:1; transform: translateY(0); } }
+    .hub-in { animation: hubIn .4s ease both; }
+    @keyframes livePulse { 0%,100% { opacity:1; } 50% { opacity:.35; } }
+    .live-dot { animation: livePulse 1.6s ease-in-out infinite; }
+    button:active:not(:disabled), a:active { transform: scale(0.98); transition: transform .05s ease; }
+    @media (prefers-reduced-motion: reduce) {
+      .hub-in, .live-dot { animation: none !important; }
+      button:active, a:active { transform: none !important; }
+    }
+  </style>
 </head>
 <body class="bg-surface text-gray-100 font-sans min-h-screen">
 
-  <main class="max-w-md mx-auto px-5 py-8">
+  <!-- subtle premium glow -->
+  <div class="pointer-events-none fixed inset-x-0 top-0 h-72 bg-gradient-to-b from-gold/10 via-gold/[0.03] to-transparent"></div>
+
+  <main class="relative max-w-md mx-auto px-5 pt-10 pb-[calc(2rem+env(safe-area-inset-bottom))]">
 
     <!-- Error -->
-    <div id="hub-error" class="hidden bg-red-900/30 border border-red-500/30 text-red-400 rounded-lg p-4"></div>
+    <div id="hub-error" class="hidden bg-red-900/30 border border-red-500/30 text-red-400 rounded-xl p-4 text-sm"></div>
 
     <!-- Header -->
     <header id="hub-header" class="hidden text-center mb-8">
-      <p class="text-[11px] font-semibold tracking-[0.25em] text-gold/80 uppercase">Welcome</p>
-      <h1 id="restaurant-name" class="font-display text-3xl font-bold text-white mt-1"></h1>
-      <div class="mt-3 inline-flex items-center gap-2 bg-card border border-white/10 rounded-full px-4 py-1.5">
+      <p class="text-[11px] font-semibold tracking-[0.3em] text-gold/80 uppercase">Welcome to</p>
+      <h1 id="restaurant-name" class="font-display text-4xl font-bold text-white mt-1.5 leading-tight"></h1>
+      <div class="mt-4 inline-flex items-center gap-2 bg-card border border-white/10 rounded-full pl-3 pr-4 py-1.5 shadow-sm">
         <i data-lucide="map-pin" class="w-4 h-4 text-gold"></i>
         <span id="table-label" class="text-sm font-medium text-gray-200"></span>
+        <span id="server-chip" class="hidden text-xs text-gray-500 border-l border-white/10 pl-2 ml-1"></span>
       </div>
-      <p id="server-label" class="hidden text-sm text-gray-400 mt-2"></p>
     </header>
 
     <!-- Actions -->
-    <div id="hub-actions" class="hidden space-y-3">
+    <div id="hub-actions" class="hidden space-y-4">
 
       <!-- Active order card -->
-      <section id="active-card" class="hidden bg-card border border-gold/20 rounded-2xl p-5">
-        <div class="flex items-center justify-between">
-          <div>
-            <p class="text-xs text-gray-400 uppercase tracking-wide">Your current order</p>
-            <p class="mt-0.5"><span id="active-status" class="font-display text-xl font-bold text-gold"></span></p>
-          </div>
-          <span id="active-meta" class="text-xs text-gray-500"></span>
+      <section id="active-card" class="hidden hub-in bg-card border border-white/10 rounded-2xl p-5 shadow-xl shadow-black/40">
+        <div class="flex items-center justify-between gap-3">
+          <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500">Your current order</p>
+          <span id="active-meta" class="text-[11px] text-gray-500"></span>
         </div>
-        <div class="grid grid-cols-2 gap-2 mt-4">
-          <a id="track-btn" href="#" class="text-center bg-gold hover:bg-gold-h text-black font-bold py-2.5 rounded-xl transition-colors">Track order</a>
-          <a id="add-btn" href="#" class="text-center bg-card-2 hover:bg-white/10 text-white font-semibold py-2.5 rounded-xl border border-white/10 transition-colors">Add more items</a>
+        <div id="active-status" class="mt-2"></div>
+
+        <a id="track-btn" href="#"
+          class="mt-4 flex items-center justify-center gap-2 w-full bg-gold hover:bg-gold-h text-black font-bold py-3.5 rounded-xl transition-colors">
+          <i data-lucide="navigation" class="w-4 h-4"></i><span>Track my order</span>
+        </a>
+
+        <div class="grid grid-cols-2 gap-2.5 mt-2.5">
+          <a id="add-btn" href="#"
+            class="flex items-center justify-center gap-2 bg-white/5 hover:bg-white/10 text-white font-semibold py-3 rounded-xl border border-white/10 transition-colors">
+            <i data-lucide="plus" class="w-4 h-4"></i><span>Add items</span>
+          </a>
+          <button id="call-btn" onclick="callServeur()"
+            class="flex items-center justify-center gap-2 bg-white/5 hover:bg-white/10 text-white font-semibold py-3 rounded-xl border border-white/10 transition-colors">
+            <i data-lucide="bell" class="w-4 h-4"></i><span>Call serveur</span>
+          </button>
         </div>
-        <button id="call-btn" onclick="callServeur()"
-          class="w-full mt-2 flex items-center justify-center gap-2 bg-card-2 hover:bg-white/10 text-white font-semibold py-2.5 rounded-xl border border-white/10 transition-colors">
-          <i data-lucide="bell" class="w-4 h-4"></i><span>Call serveur</span>
-        </button>
-        <p id="call-sent" class="hidden text-center text-sm text-green-400 mt-2 font-medium">A serveur is on the way 👍</p>
+        <p id="call-sent" class="hidden text-center text-sm text-green-400 mt-3 font-medium">A serveur is on the way 👍</p>
 
         <button id="cancel-btn" onclick="requestCancel()"
-          class="w-full mt-2 flex items-center justify-center gap-2 bg-transparent hover:bg-red-500/10 text-red-300 font-semibold py-2.5 rounded-xl border border-red-500/30 transition-colors">
-          <i data-lucide="x-circle" class="w-4 h-4"></i><span>Request cancellation</span>
+          class="block mx-auto mt-3 text-xs font-medium text-gray-500 hover:text-red-300 transition-colors">
+          Request cancellation
         </button>
         <p id="cancel-sent" class="hidden text-center text-sm text-amber-300 mt-2 font-medium">A serveur will review your cancellation request.</p>
       </section>
 
-      <!-- Browse / start order -->
+      <!-- Browse / start order (hero) -->
       <a id="menu-btn" href="#"
-        class="flex items-center gap-3 bg-gold hover:bg-gold-h text-black rounded-2xl px-5 py-4 font-bold transition-colors">
+        class="hub-in flex items-center gap-3 bg-gold hover:bg-gold-h text-black rounded-2xl px-5 py-4 font-bold shadow-lg shadow-gold/20 transition-colors">
         <i data-lucide="utensils" class="w-5 h-5"></i>
-        <span id="menu-btn-label" class="flex-1">Browse menu &amp; order</span>
-        <i data-lucide="chevron-right" class="w-5 h-5"></i>
+        <span id="menu-btn-label" class="flex-1 text-[15px]">Browse menu &amp; order</span>
+        <i data-lucide="arrow-right" class="w-5 h-5"></i>
       </a>
 
       <!-- Leave review (only when a served order has no review) -->
       <a id="review-btn" href="#"
-        class="hidden flex items-center gap-3 bg-card border border-white/10 hover:border-gold/40 rounded-2xl px-5 py-4 transition-colors">
-        <i data-lucide="star" class="w-5 h-5 text-gold"></i>
-        <span class="flex-1 font-semibold text-white">How was your meal? Leave a review</span>
+        class="hidden hub-in flex items-center gap-3 bg-card border border-white/10 hover:border-gold/40 rounded-2xl px-5 py-4 transition-colors">
+        <span class="flex items-center justify-center w-9 h-9 rounded-full bg-gold/15 text-gold flex-shrink-0">
+          <i data-lucide="star" class="w-4 h-4"></i>
+        </span>
+        <span class="flex-1 font-semibold text-white text-[15px]">How was your meal?<span class="block text-xs font-normal text-gray-400">Leave a quick review</span></span>
         <i data-lucide="chevron-right" class="w-5 h-5 text-gray-500"></i>
       </a>
 
       <!-- Call serveur when there is no active order -->
       <button id="call-btn-standalone" onclick="callServeur()"
-        class="hidden w-full flex items-center gap-3 bg-card border border-white/10 hover:border-gold/40 rounded-2xl px-5 py-4 transition-colors">
-        <i data-lucide="bell" class="w-5 h-5 text-gold"></i>
-        <span class="flex-1 text-left font-semibold text-white">Need help? Call a serveur</span>
+        class="hidden hub-in w-full flex items-center gap-3 bg-card border border-white/10 hover:border-gold/40 rounded-2xl px-5 py-4 transition-colors">
+        <span class="flex items-center justify-center w-9 h-9 rounded-full bg-gold/15 text-gold flex-shrink-0">
+          <i data-lucide="bell" class="w-4 h-4"></i>
+        </span>
+        <span class="flex-1 text-left font-semibold text-white text-[15px]">Need help?<span class="block text-xs font-normal text-gray-400">Call a serveur to your table</span></span>
       </button>
       <p id="call-sent-standalone" class="hidden text-center text-sm text-green-400 font-medium">A serveur is on the way 👍</p>
 
       <!-- Loyalty -->
-      <section class="bg-card border border-white/10 rounded-2xl p-5">
-        <div class="flex items-center gap-2 mb-3">
+      <section class="hub-in bg-card border border-white/10 rounded-2xl p-5 shadow-sm">
+        <div class="flex items-center gap-2 mb-1">
           <i data-lucide="gift" class="w-4 h-4 text-gold"></i>
           <h2 class="text-sm font-semibold text-white">My loyalty points</h2>
         </div>
+        <p class="text-xs text-gray-500 mb-3">Enter your phone to see points earned with us.</p>
         <div id="loyalty-input-wrap" class="flex gap-2">
-          <input id="phone-input" type="tel" placeholder="Your phone number"
-            class="flex-1 bg-white/5 border border-white/10 text-white placeholder-gray-500 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gold" />
+          <input id="phone-input" type="tel" inputmode="tel" placeholder="Your phone number"
+            class="flex-1 bg-white/5 border border-white/10 text-white placeholder-gray-500 rounded-xl px-3.5 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-gold" />
           <button onclick="checkLoyalty()"
-            class="bg-card-2 hover:bg-white/10 text-white text-sm font-semibold px-4 rounded-lg border border-white/10 transition-colors">Check</button>
+            class="bg-gold hover:bg-gold-h text-black text-sm font-bold px-5 rounded-xl transition-colors">Check</button>
         </div>
-        <div id="loyalty-result" class="hidden mt-3 text-center"></div>
+        <div id="loyalty-result" class="hidden mt-4 text-center"></div>
         <p id="loyalty-error" class="hidden text-red-400 text-xs mt-2"></p>
       </section>
 
@@ -119,7 +144,19 @@ function getCsrfToken() {
   return match ? match[1] : '';
 }
 
-const STATUS_LABEL = { NEW: 'Received', PREPARING: 'Being prepared', READY: 'Ready to serve', SERVED: 'Served' };
+const STATUS_STYLE = {
+  NEW:       { label: 'Received',       dot: 'bg-blue-400',  cls: 'border-blue-400/30 bg-blue-400/10 text-blue-200',   live: true  },
+  PREPARING: { label: 'Being prepared', dot: 'bg-amber-400', cls: 'border-amber-400/30 bg-amber-400/10 text-amber-200', live: true  },
+  READY:     { label: 'Ready to serve', dot: 'bg-green-400', cls: 'border-green-400/30 bg-green-400/10 text-green-200', live: true  },
+  SERVED:    { label: 'Served',         dot: 'bg-teal-400',  cls: 'border-teal-400/30 bg-teal-400/10 text-teal-200',    live: false },
+};
+
+function statusPillHtml(status) {
+  const s = STATUS_STYLE[status] || STATUS_STYLE.NEW;
+  return `<span class="inline-flex items-center gap-2 text-sm font-semibold px-3 py-1.5 rounded-full border ${s.cls}">
+            <span class="w-2 h-2 rounded-full ${s.dot} ${s.live ? 'live-dot' : ''}"></span>${s.label}
+          </span>`;
+}
 
 async function init() {
   if (!state.tableToken) {
@@ -153,8 +190,8 @@ function render(data) {
   document.title = `Table ${data.table.number} — ${data.restaurant.name}`;
 
   if (data.server_name) {
-    const s = document.getElementById('server-label');
-    s.textContent = `Served by ${data.server_name}`;
+    const s = document.getElementById('server-chip');
+    s.textContent = data.server_name;
     s.classList.remove('hidden');
   }
 
@@ -166,9 +203,9 @@ function render(data) {
     document.getElementById('menu-btn-label').textContent = 'Browse menu & start another order';
     const card = document.getElementById('active-card');
     card.classList.remove('hidden');
-    document.getElementById('active-status').textContent = STATUS_LABEL[active.status] || active.status;
+    document.getElementById('active-status').innerHTML = statusPillHtml(active.status);
     document.getElementById('active-meta').textContent =
-      `Order #${active.id} · ${active.item_count} item${active.item_count !== 1 ? 's' : ''}`;
+      `#${active.id} · ${active.item_count} item${active.item_count !== 1 ? 's' : ''}`;
     document.getElementById('track-btn').href = `/order/${active.id}/`;
     document.getElementById('add-btn').href = `${menuBase}&add_to=${active.id}`;
 
@@ -256,11 +293,11 @@ async function checkLoyalty() {
     const data = await res.json();
     if (!res.ok) { errEl.textContent = data.error || 'Could not check points.'; errEl.classList.remove('hidden'); return; }
     if (!data.found) {
-      resultEl.innerHTML = '<p class="text-sm text-gray-400">No points yet — place an order with this number to start earning.</p>';
+      resultEl.innerHTML = '<p class="text-sm text-gray-400">No points yet — order with this number to start earning.</p>';
     } else {
       resultEl.innerHTML = `
-        <p class="font-display text-4xl font-bold text-gold">${data.loyalty_points}</p>
-        <p class="text-xs text-gray-400 mt-1">loyalty points</p>`;
+        <p class="font-display text-5xl font-bold text-gold leading-none">${data.loyalty_points}</p>
+        <p class="text-xs text-gray-400 mt-1.5 uppercase tracking-wide">loyalty points</p>`;
     }
     resultEl.classList.remove('hidden');
   } catch {

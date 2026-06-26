@@ -1,9 +1,9 @@
 from django.core.management.base import BaseCommand
-from core.models import Restaurant, Table, MenuItem, StaffPasscode, Order
+from core.models import Restaurant, Table, MenuItem, StaffPasscode, Order, Server
 
 
 class Command(BaseCommand):
-    help = 'Seed database with a sample restaurant, tables, and menu items'
+    help = 'Seed database with a sample restaurant, tables, serveurs, and menu items'
 
     def handle(self, *args, **options):
         restaurant, created = Restaurant.objects.get_or_create(
@@ -15,14 +15,25 @@ class Command(BaseCommand):
         else:
             self.stdout.write(f'Using existing restaurant: {restaurant.name}')
 
-        # Assign a serveur to each table so the serveur-performance chart has
-        # data. Idempotent: only fills a blank server_name, never overwrites.
-        servers = {1: 'Sara', 2: 'Youssef', 3: 'Sara', 4: 'Mehdi', 5: 'Youssef'}
+        # Serveurs (passcode login). Idempotent by name.
+        serveur_codes = {'Sara': '2001', 'Youssef': '2002', 'Mehdi': '2003'}
+        servers = {}
+        for name, code in serveur_codes.items():
+            servers[name], _ = Server.objects.get_or_create(
+                name=name, defaults={'passcode': code, 'is_active': True}
+            )
+        self.stdout.write('Serveurs ready (Sara=2001, Youssef=2002, Mehdi=2003)')
+
+        # Assign a serveur to each table (canonical Server FK + display snapshot).
+        # Idempotent: only fills an unassigned table, never overwrites.
+        table_servers = {1: 'Sara', 2: 'Youssef', 3: 'Sara', 4: 'Mehdi', 5: 'Youssef'}
         for number in range(1, 6):
             table, _ = Table.objects.get_or_create(restaurant=restaurant, number=number)
-            if not table.server_name:
-                table.server_name = servers[number]
-                table.save(update_fields=['server_name'])
+            if table.server_id is None and not table.server_name:
+                server = servers[table_servers[number]]
+                table.server = server
+                table.server_name = server.name
+                table.save(update_fields=['server', 'server_name'])
         self.stdout.write('Tables 1–5 ready (serveurs assigned)')
 
         # Backfill existing orders that predate the snapshot field, so historical

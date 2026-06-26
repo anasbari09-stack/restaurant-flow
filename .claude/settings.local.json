@@ -1,9 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(python manage.py runserver --noreload)",
-      "Bash(curl -s \"http://127.0.0.1:8000/menu/?table=c483298b-7d01-4ffb-8c7e-a7f6a37a0a08\")",
-      "Bash(kill %1)"
-    ]
-  }
-}

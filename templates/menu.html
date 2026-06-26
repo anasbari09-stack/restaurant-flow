@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Menu</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -65,17 +65,32 @@
     }
     .cart-bump { animation: cartBump .4s ease; }
 
-    /* ── offers carousel: one full-width slide at a time, smooth snap ─────────── */
+    /* ── offers carousel: snap with a peek of the next card ──────────────────── */
     #offers-carousel {
       scroll-snap-type: x mandatory;
       scroll-behavior: smooth;
       overscroll-behavior-x: contain;
     }
-    .offer-slide { scroll-snap-align: center; }
+    .offer-slide { scroll-snap-align: start; }
+
+    /* ── carousel dots ───────────────────────────────────────────────────────── */
+    .dot { width: 6px; height: 6px; border-radius: 9999px; background: rgba(255,255,255,.25); transition: all .25s ease; }
+    .dot.active { width: 18px; background: #d4a520; }
 
     /* ── image fade-in ───────────────────────────────────────────────────────── */
     .img-fade { opacity: 0; transition: opacity .5s ease; }
     .img-fade.loaded { opacity: 1; }
+
+    /* ── floating cart bar ───────────────────────────────────────────────────── */
+    #cart-bar { transition: transform .3s cubic-bezier(.22,1,.36,1), opacity .25s ease; }
+    #cart-bar.hidden-bar { transform: translateY(160%); opacity: 0; pointer-events: none; }
+
+    @media (prefers-reduced-motion: reduce) {
+      .card-animate, .cart-bump { animation: none !important; opacity: 1 !important; }
+      .menu-card, button:active, #cart-bar, #cart-drawer { transition: none !important; }
+      .menu-card:hover { transform: none !important; }
+      html { scroll-behavior: auto !important; }
+    }
   </style>
 </head>
 <body class="bg-surface text-gray-100 font-sans min-h-screen">
@@ -116,14 +131,19 @@
         </button>
       </div>
     </div>
-    <div id="offers-carousel" class="flex gap-4 overflow-x-auto scrollbar-hide -mx-1 px-1 pb-1"></div>
+    <div id="offers-carousel" class="flex gap-3 overflow-x-auto scrollbar-hide -mx-1 px-1 pb-1"></div>
+    <div id="offers-dots" class="flex items-center justify-center gap-1.5 mt-3"></div>
   </section>
 
-  <!-- Menu heading + filter pills (sticky) -->
-  <div id="menu-bar" class="hidden bg-surface/95 backdrop-blur sticky top-[69px] z-10 border-b border-white/5">
-    <div class="max-w-3xl mx-auto px-4 pt-6 pb-3">
-      <p class="text-[11px] font-semibold tracking-[0.2em] text-gold/80 uppercase">Our Menu</p>
-      <h2 class="font-display text-2xl font-bold text-white mt-0.5 mb-3">Browse the Menu</h2>
+  <!-- Menu intro (not sticky) -->
+  <div id="menu-intro" class="hidden max-w-3xl mx-auto px-4 pt-7">
+    <p class="text-[11px] font-semibold tracking-[0.2em] text-gold/80 uppercase">Our Menu</p>
+    <h2 class="font-display text-2xl font-bold text-white mt-0.5">Browse the Menu</h2>
+  </div>
+
+  <!-- Sticky category nav (pills only) -->
+  <div id="menu-bar" class="hidden bg-surface/95 backdrop-blur sticky top-[69px] z-10 border-b border-white/5 mt-3">
+    <div class="max-w-3xl mx-auto px-4 py-3">
       <div id="filter-pills" class="flex gap-2 overflow-x-auto scrollbar-hide"></div>
     </div>
   </div>
@@ -144,21 +164,33 @@
       <h2 class="font-display text-lg font-bold text-white">Your Order</h2>
       <button onclick="closeCart()" class="text-gray-400 hover:text-white text-2xl leading-none transition-colors">&times;</button>
     </div>
-    <div id="cart-items" class="flex-1 overflow-y-auto px-4 py-3 space-y-3"></div>
-    <div class="px-4 py-4 border-t border-white/10 space-y-3 bg-card-2">
+    <div id="cart-items" class="flex-1 overflow-y-auto px-4 py-4 space-y-3"></div>
+    <div class="px-4 py-4 border-t border-white/10 space-y-3 bg-card-2 pb-[calc(1rem+env(safe-area-inset-bottom))]">
       <div class="flex justify-between text-base font-bold">
         <span class="text-gray-300">Total</span>
         <span id="cart-total" class="text-gold">$0.00</span>
       </div>
-      <input id="phone-input" type="tel" placeholder="Phone number (optional — for loyalty points)"
-        class="w-full bg-white/5 border border-white/10 text-white placeholder-gray-500 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gold" />
-      <button id="order-btn" onclick="submitOrder()"
-        class="w-full bg-gold hover:bg-gold-h disabled:opacity-50 text-black font-bold py-3 rounded-xl transition-colors">
+      <input id="phone-input" type="tel" inputmode="tel" placeholder="Phone number (optional — for loyalty points)"
+        class="w-full bg-white/5 border border-white/10 text-white placeholder-gray-500 rounded-xl px-3.5 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-gold" />
+      <button id="order-btn" onclick="submitOrder()" disabled
+        class="w-full bg-gold hover:bg-gold-h disabled:opacity-40 disabled:cursor-not-allowed text-black font-bold py-3.5 rounded-xl transition-colors">
         Place Order
       </button>
       <p id="order-error" class="text-red-400 text-sm hidden"></p>
     </div>
   </aside>
+
+  <!-- Floating "View order" bar (shown when cart has items) -->
+  <div id="cart-bar" class="hidden-bar fixed bottom-0 inset-x-0 z-30 px-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+    <button onclick="openCart()"
+      class="max-w-3xl mx-auto w-full flex items-center justify-between gap-3 bg-gold hover:bg-gold-h text-black font-bold px-4 py-3.5 rounded-2xl shadow-2xl shadow-black/50">
+      <span class="flex items-center gap-2.5">
+        <span id="cart-bar-count" class="inline-flex items-center justify-center min-w-6 h-6 px-1.5 bg-black/15 rounded-full text-sm">0</span>
+        <span>View order</span>
+      </span>
+      <span id="cart-bar-total">$0.00</span>
+    </button>
+  </div>
 
 
 <script>
@@ -174,7 +206,8 @@ const state = {
   assisted: new URLSearchParams(location.search).get('assisted') === '1',
   menuData: null,
   cart: {},
-  filter: 'all',
+  itemsById: {},   // id -> menu item (for cart thumbnails)
+  categories: [],  // ordered category keys currently rendered
 };
 
 const CATEGORY_ORDER  = ['food', 'drink', 'dessert'];
@@ -228,13 +261,21 @@ function renderPage(data) {
     if (orderBtn) orderBtn.textContent = 'Place Order for Customer';
   }
 
+  // Build an id -> item lookup for cart thumbnails (menu + featured).
+  (data.featured || []).forEach(it => { state.itemsById[it.id] = it; });
+  Object.values(data.menu || {}).forEach(list => list.forEach(it => { state.itemsById[it.id] = it; }));
+
   renderOffers(data.featured || []);
 
   const categories = CATEGORY_ORDER.filter(c => data.menu[c]?.length);
+  state.categories = categories;
   renderFilterPills(categories);
   renderSections(data, categories);
 
-  applyFilter('all');
+  // Entrance animation for the first sections, then enable scroll-spy nav.
+  categories.forEach(animateSectionCards);
+  setupScrollSpy(categories);
+  updateCartBadge();
 }
 
 // ─── special offers carousel ────────────────────────────────────────────────
@@ -243,20 +284,22 @@ function renderOffers(featured) {
   document.getElementById('offers-section').classList.remove('hidden');
   const carousel = document.getElementById('offers-carousel');
 
+  const single = featured.length === 1;
   featured.forEach(item => {
     const id    = item.id;
     const name  = item.name;
     const price = parseFloat(item.price);
 
     const slide = document.createElement('article');
-    slide.className = 'offer-slide relative flex-shrink-0 w-full rounded-3xl overflow-hidden bg-card border border-white/10 shadow-2xl';
+    // A peek of the next card hints there's more to swipe (only when >1).
+    slide.className = `offer-slide relative flex-shrink-0 ${single ? 'w-full' : 'w-[86%] sm:w-[70%]'} rounded-3xl overflow-hidden bg-card border border-white/10 shadow-2xl`;
 
     slide.innerHTML = `
-      <div class="relative h-56 sm:h-64 bg-card-2">
+      <div class="relative h-48 sm:h-56 bg-card-2">
         ${item.image_url ? `<img src="${esc(item.image_url)}" alt="${esc(name)}"
             class="img-fade absolute inset-0 w-full h-full object-cover"
             onload="this.classList.add('loaded')" onerror="this.remove()">` : ''}
-        <div class="absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-black/10"></div>
+        <div class="absolute inset-0 bg-gradient-to-t from-black/90 via-black/35 to-black/10"></div>
         <span class="absolute top-3 left-3 inline-flex items-center gap-1 bg-gold text-black text-[11px] font-bold uppercase tracking-wide px-2.5 py-1 rounded-full">
           <i data-lucide="star" class="w-3 h-3"></i> Chef's Pick
         </span>
@@ -273,25 +316,60 @@ function renderOffers(featured) {
     carousel.appendChild(slide);
     renderControls(id, name, price, slide.querySelector(`#ctrl-${id}`));
   });
+
+  // Dots (only meaningful with multiple offers).
+  const dotsWrap = document.getElementById('offers-dots');
+  if (!single) {
+    featured.forEach((_, i) => {
+      const dot = document.createElement('button');
+      dot.className = 'dot' + (i === 0 ? ' active' : '');
+      dot.setAttribute('aria-label', `Offer ${i + 1}`);
+      dot.addEventListener('click', () => goToOffer(i));
+      dotsWrap.appendChild(dot);
+    });
+    carousel.addEventListener('scroll', () => {
+      clearTimeout(carousel._dotT);
+      carousel._dotT = setTimeout(updateOfferDots, 60);
+    });
+  }
+}
+
+function offerSlideWidth() {
+  const c = document.getElementById('offers-carousel');
+  const first = c.querySelector('.offer-slide');
+  if (!first) return c.clientWidth;
+  const gap = parseFloat(getComputedStyle(c).columnGap || '12') || 12;
+  return first.getBoundingClientRect().width + gap;
+}
+
+function updateOfferDots() {
+  const c = document.getElementById('offers-carousel');
+  const idx = Math.round(c.scrollLeft / offerSlideWidth());
+  document.querySelectorAll('#offers-dots .dot').forEach((d, i) =>
+    d.classList.toggle('active', i === idx));
+}
+
+function goToOffer(i) {
+  document.getElementById('offers-carousel').scrollTo({ left: i * offerSlideWidth(), behavior: 'smooth' });
 }
 
 function scrollOffers(dir) {
   const c = document.getElementById('offers-carousel');
-  c.scrollBy({ left: dir * c.clientWidth, behavior: 'smooth' });
+  c.scrollBy({ left: dir * offerSlideWidth(), behavior: 'smooth' });
 }
 
 // ─── filter pills ───────────────────────────────────────────────────────────
 function renderFilterPills(categories) {
+  document.getElementById('menu-intro').classList.remove('hidden');
   document.getElementById('menu-bar').classList.remove('hidden');
   const wrap = document.getElementById('filter-pills');
-  const tabs = [['all', 'All', 'layout-grid'], ...categories.map(c => [c, CATEGORY_LABELS[c], CATEGORY_ICONS[c]])];
-
-  tabs.forEach(([cat, label, icon]) => {
+  // Pills are jump-to-section navigation; scroll-spy keeps the active one in sync.
+  categories.forEach((cat, i) => {
     const btn = document.createElement('button');
     btn.id        = `pill-${cat}`;
-    btn.className = pillClass(cat === 'all');
-    btn.onclick   = () => applyFilter(cat);
-    btn.innerHTML = `<i data-lucide="${icon}" class="w-4 h-4 flex-shrink-0"></i><span>${label}</span>`;
+    btn.className = pillClass(i === 0);
+    btn.onclick   = () => scrollToCategory(cat);
+    btn.innerHTML = `<i data-lucide="${CATEGORY_ICONS[cat] || 'utensils'}" class="w-4 h-4 flex-shrink-0"></i><span>${CATEGORY_LABELS[cat] || cat}</span>`;
     wrap.appendChild(btn);
   });
 }
@@ -303,19 +381,45 @@ function pillClass(active) {
     : `${base} bg-card-2 border-white/10 text-gray-400 hover:text-white hover:border-white/25`;
 }
 
-function applyFilter(cat) {
-  state.filter = cat;
+// Pixels to offset for the sticky header + category bar when scrolling to a section.
+function stickyOffset() {
+  const header = document.querySelector('header');
+  const bar = document.getElementById('menu-bar');
+  return (header ? header.offsetHeight : 0) + (bar ? bar.offsetHeight : 0) + 8;
+}
+
+function setActivePill(cat) {
   document.querySelectorAll('#filter-pills button').forEach(btn => {
-    btn.className = pillClass(btn.id === `pill-${cat}`);
-  });
-  CATEGORY_ORDER.forEach(c => {
-    const section = document.getElementById(`cat-${c}`);
-    if (!section) return;
-    const show = cat === 'all' || cat === c;
-    section.classList.toggle('hidden', !show);
-    if (show) animateSectionCards(c);
+    const isActive = btn.id === `pill-${cat}`;
+    btn.className = pillClass(isActive);
+    if (isActive) btn.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'smooth' });
   });
   lucide.createIcons();
+}
+
+function scrollToCategory(cat) {
+  const section = document.getElementById(`cat-${cat}`);
+  if (!section) return;
+  const y = section.getBoundingClientRect().top + window.scrollY - stickyOffset();
+  window.scrollTo({ top: y, behavior: 'smooth' });
+  setActivePill(cat);
+}
+
+function setupScrollSpy(categories) {
+  if (!('IntersectionObserver' in window) || categories.length < 2) return;
+  const offset = stickyOffset();
+  const obs = new IntersectionObserver((entries) => {
+    // Pick the top-most section currently crossing the line below the sticky bars.
+    const visible = entries.filter(e => e.isIntersecting)
+      .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+    if (visible.length) {
+      setActivePill(visible[0].target.id.replace('cat-', ''));
+    }
+  }, { rootMargin: `-${offset}px 0px -68% 0px`, threshold: 0 });
+  categories.forEach(c => {
+    const s = document.getElementById(`cat-${c}`);
+    if (s) obs.observe(s);
+  });
 }
 
 // ─── sections / grid ────────────────────────────────────────────────────────
@@ -356,13 +460,13 @@ function animateSectionCards(cat) {
 // ─── item card ──────────────────────────────────────────────────────────────
 function buildItemCard(item) {
   const card = document.createElement('div');
-  card.className = 'menu-card bg-card rounded-2xl overflow-hidden shadow-lg border border-white/[0.06] flex flex-col';
+  card.className = 'menu-card bg-card rounded-2xl overflow-hidden shadow-lg shadow-black/30 border border-white/[0.06] flex flex-col';
 
   if (item.image_url) {
     const img = document.createElement('img');
     img.src       = item.image_url;
     img.alt       = item.name;
-    img.className = 'img-fade w-full h-36 object-cover';
+    img.className = 'img-fade w-full h-32 object-cover';
     img.addEventListener('load',  () => img.classList.add('loaded'));
     img.addEventListener('error', () => img.style.display = 'none');
     card.appendChild(img);
@@ -374,17 +478,22 @@ function buildItemCard(item) {
   const info = document.createElement('div');
   info.className = 'flex-1 min-w-0';
   info.innerHTML = `
-    <p class="font-semibold text-white">${esc(item.name)}</p>
-    ${item.description ? `<p class="text-xs text-gray-400 mt-0.5 line-clamp-2">${esc(item.description)}</p>` : ''}
-    <p class="text-gold font-bold mt-1">$${parseFloat(item.price).toFixed(2)}</p>
+    <p class="font-semibold text-white leading-snug">${esc(item.name)}</p>
+    ${item.description ? `<p class="text-xs text-gray-400 mt-1 line-clamp-2">${esc(item.description)}</p>` : ''}
   `;
 
-  const ctrl = document.createElement('div');
-  ctrl.id        = `ctrl-${item.id}`;
-  ctrl.className = 'mt-3 flex justify-end';
+  const row = document.createElement('div');
+  row.className = 'mt-3 flex items-center justify-between gap-2';
+  const price = document.createElement('span');
+  price.className = 'text-gold font-bold text-lg';
+  price.textContent = `$${parseFloat(item.price).toFixed(2)}`;
 
+  const ctrl = document.createElement('div');
+  ctrl.id = `ctrl-${item.id}`;
+
+  row.append(price, ctrl);
   body.appendChild(info);
-  body.appendChild(ctrl);
+  body.appendChild(row);
   card.appendChild(body);
 
   renderControls(item.id, item.name, parseFloat(item.price), ctrl);
@@ -401,33 +510,38 @@ function renderControls(id, name, price, el) {
 
   if (qty === 0) {
     const btn = document.createElement('button');
+    btn.setAttribute('aria-label', `Add ${name}`);
     if (large) {
       btn.className = 'flex items-center gap-2 bg-gold hover:bg-gold-h text-black font-bold px-5 py-2.5 rounded-full transition-colors';
       btn.innerHTML = '<span>Add to Order</span>';
     } else {
-      btn.className = 'w-8 h-8 rounded-full bg-gold hover:bg-gold-h text-black font-bold text-xl leading-none flex items-center justify-center transition-colors flex-shrink-0';
-      btn.textContent = '+';
+      // Clear labelled pill (was a bare "+") for a stronger affordance.
+      btn.className = 'flex items-center gap-1 bg-gold hover:bg-gold-h text-black font-bold text-sm pl-2.5 pr-3.5 py-2 rounded-full transition-colors flex-shrink-0';
+      btn.innerHTML = '<span class="text-base leading-none">+</span><span>Add</span>';
     }
     btn.addEventListener('click', () => addToCart(id, name, price));
     ctrl.appendChild(btn);
   } else {
+    // Unified stepper pill for both grid and offers.
     const wrap = document.createElement('div');
     wrap.className = large
       ? 'flex items-center gap-3 bg-black/40 backdrop-blur rounded-full px-2 py-1'
-      : 'flex items-center gap-2';
+      : 'flex items-center gap-2 bg-card-2 border border-white/10 rounded-full px-1.5 py-1';
 
     const btnSize = large ? 'w-9 h-9 text-lg' : 'w-7 h-7';
 
     const minus = document.createElement('button');
+    minus.setAttribute('aria-label', 'Decrease quantity');
     minus.className = `${btnSize} rounded-full bg-white/10 hover:bg-white/20 text-white font-bold flex items-center justify-center transition-colors`;
     minus.textContent = '−';
     minus.addEventListener('click', () => changeQty(id, -1));
 
     const countEl = document.createElement('span');
-    countEl.className = `font-bold text-white text-center ${large ? 'w-6 text-lg' : 'w-4'}`;
+    countEl.className = `font-bold text-white text-center ${large ? 'w-6 text-lg' : 'w-5'}`;
     countEl.textContent = qty;
 
     const plus = document.createElement('button');
+    plus.setAttribute('aria-label', 'Increase quantity');
     plus.className = `${btnSize} rounded-full bg-gold hover:bg-gold-h text-black font-bold flex items-center justify-center transition-colors`;
     plus.textContent = '+';
     plus.addEventListener('click', () => changeQty(id, 1));
@@ -471,9 +585,26 @@ function afterCartChange(id, name, price) {
 
 function updateCartBadge() {
   const count = Object.values(state.cart).reduce((s, i) => s + i.qty, 0);
+  const total = Object.values(state.cart).reduce((s, i) => s + i.price * i.qty, 0);
   const badge = document.getElementById('cart-badge');
   badge.textContent = count;
   badge.classList.toggle('hidden', count === 0);
+
+  // Place Order is only actionable with items.
+  const orderBtn = document.getElementById('order-btn');
+  if (orderBtn) orderBtn.disabled = count === 0;
+
+  updateCartBar(count, total);
+}
+
+function updateCartBar(count, total) {
+  const bar = document.getElementById('cart-bar');
+  if (!bar) return;
+  const drawerOpen = !document.getElementById('cart-drawer').classList.contains('translate-x-full');
+  document.getElementById('cart-bar-count').textContent = count;
+  document.getElementById('cart-bar-total').textContent = `$${total.toFixed(2)}`;
+  // Show the floating bar only when there are items and the drawer is closed.
+  bar.classList.toggle('hidden-bar', !(count > 0 && !drawerOpen));
 }
 
 function triggerCartBump() {
@@ -489,11 +620,13 @@ function openCart() {
   renderCartItems();
   document.getElementById('cart-overlay').classList.remove('hidden');
   document.getElementById('cart-drawer').classList.remove('translate-x-full');
+  document.getElementById('cart-bar').classList.add('hidden-bar'); // avoid overlap with drawer
 }
 
 function closeCart() {
   document.getElementById('cart-overlay').classList.add('hidden');
   document.getElementById('cart-drawer').classList.add('translate-x-full');
+  updateCartBadge(); // re-show the floating bar if items remain
 }
 
 function renderCartItems() {
@@ -501,8 +634,16 @@ function renderCartItems() {
   const el      = document.getElementById('cart-items');
 
   if (entries.length === 0) {
-    el.innerHTML = '<p class="text-gray-500 text-center py-10">Your cart is empty</p>';
+    el.innerHTML = `
+      <div class="flex flex-col items-center justify-center text-center py-16 px-6">
+        <span class="flex items-center justify-center w-16 h-16 rounded-full bg-white/5 text-gray-500 mb-4">
+          <i data-lucide="shopping-bag" class="w-7 h-7"></i>
+        </span>
+        <p class="text-gray-300 font-medium">Your cart is empty</p>
+        <p class="text-gray-500 text-sm mt-1">Add a few dishes from the menu to get started.</p>
+      </div>`;
     document.getElementById('cart-total').textContent = '$0.00';
+    lucide.createIcons();
     return;
   }
 
@@ -510,28 +651,33 @@ function renderCartItems() {
   el.innerHTML = entries.map(([id, item]) => {
     const sub = item.price * item.qty;
     total += sub;
+    const img = state.itemsById[id] && state.itemsById[id].image_url;
+    const thumb = img
+      ? `<img src="${esc(img)}" alt="" class="w-12 h-12 rounded-lg object-cover flex-shrink-0">`
+      : `<span class="w-12 h-12 rounded-lg bg-white/5 flex items-center justify-center text-gray-600 flex-shrink-0"><i data-lucide="utensils" class="w-5 h-5"></i></span>`;
     return `
-      <div class="flex items-center gap-2">
+      <div class="flex items-center gap-3">
+        ${thumb}
         <div class="flex-1 min-w-0">
           <p class="text-sm font-medium text-white truncate">${esc(item.name)}</p>
-          <p class="text-xs text-gray-400">$${item.price.toFixed(2)} &times; ${item.qty}</p>
+          <p class="text-xs text-gold font-semibold mt-0.5">$${sub.toFixed(2)}</p>
         </div>
-        <div class="flex items-center gap-1.5">
-          <button onclick="changeQty(${id}, -1)"
-            class="w-6 h-6 rounded-full bg-white/10 hover:bg-white/20 text-white text-xs font-bold flex items-center justify-center transition-colors">
+        <div class="flex items-center gap-2 bg-card border border-white/10 rounded-full px-1.5 py-1 flex-shrink-0">
+          <button onclick="changeQty(${id}, -1)" aria-label="Decrease"
+            class="w-7 h-7 rounded-full bg-white/10 hover:bg-white/20 text-white text-sm font-bold flex items-center justify-center transition-colors">
             &minus;
           </button>
-          <span class="w-4 text-center text-sm font-bold text-white">${item.qty}</span>
-          <button onclick="changeQty(${id}, 1)"
-            class="w-6 h-6 rounded-full bg-gold hover:bg-gold-h text-black text-xs font-bold flex items-center justify-center transition-colors">
+          <span class="w-5 text-center text-sm font-bold text-white">${item.qty}</span>
+          <button onclick="changeQty(${id}, 1)" aria-label="Increase"
+            class="w-7 h-7 rounded-full bg-gold hover:bg-gold-h text-black text-sm font-bold flex items-center justify-center transition-colors">
             +
           </button>
         </div>
-        <span class="text-sm font-bold text-gold w-12 text-right">$${sub.toFixed(2)}</span>
       </div>`;
   }).join('');
 
   document.getElementById('cart-total').textContent = `$${total.toFixed(2)}`;
+  lucide.createIcons();
 }
 
 // ─── submit order ────────────────────────────────────────────────────────────
