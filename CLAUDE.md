@@ -15,6 +15,12 @@
   NEW auto-cancels, PREPARING needs serveur/admin approve-reject, READY/SERVED not allowed. Never
   cancel when any item is already SERVED. total_amount excludes canceled items.
 - Customers identified by phone number only — no login/password for customers
+- A dining visit is a TableSession; orders attach to it (Order.session FK, nullable for legacy).
+  Lifecycle is automated and lazy (no cron): auto-open/join on QR scan, lazy auto-close on
+  inactivity (finished+idle >30min, or hard cap 6h), plus a "new party" handoff when a finished
+  session is scanned by a different browser. Staff Close Table is a manual override.
+  Customer writes (order/append/help/cancel) require the browser's Django-session cookie to hold
+  the table's current open visit (else 409); reads (track/review/loyalty) stay open after close.
 - Staff have simple login (admin/kitchen/drinks/dessert roles)
 - Serveurs are a Server model (name, passcode, is_active) with their own passcode login
   (session server_id) — kept simple, no password hashing for v1

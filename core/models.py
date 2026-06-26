@@ -1,5 +1,6 @@
 import uuid
 from django.db import models
+from django.utils import timezone
 
 
 class Restaurant(models.Model):
@@ -46,6 +47,29 @@ class Table(models.Model):
     def __str__(self):
         return f'{self.restaurant.name} — Table {self.number}'
 
+    def current_open_session(self):
+        return self.sessions.filter(closed_at__isnull=True).order_by('-opened_at').first()
+
+
+class TableSession(models.Model):
+    """One dining visit at a table. Orders attach to a session so a new party
+    starts fresh and a departed customer can't act on a closed visit. Lifecycle
+    is automated (auto-open on scan, lazy auto-close on inactivity); staff Close
+    is a manual override. closed_by records why/who closed it (audit)."""
+    table            = models.ForeignKey(Table, on_delete=models.CASCADE, related_name='sessions')
+    opened_at        = models.DateTimeField(auto_now_add=True)
+    closed_at        = models.DateTimeField(null=True, blank=True)
+    last_activity_at = models.DateTimeField(default=timezone.now)
+    closed_by        = models.CharField(max_length=50, blank=True)
+
+    @property
+    def is_open(self):
+        return self.closed_at is None
+
+    def __str__(self):
+        state = 'open' if self.is_open else 'closed'
+        return f'Session #{self.pk} — {self.table} ({state})'
+
 
 class MenuItem(models.Model):
     CATEGORY_CHOICES = [
@@ -83,6 +107,11 @@ class Customer(models.Model):
 
 class Order(models.Model):
     table = models.ForeignKey(Table, on_delete=models.PROTECT, related_name='orders')
+    # The dining visit this order belongs to. Nullable: legacy orders and any
+    # order created outside a resolved session stay null (treated as closed).
+    session = models.ForeignKey(
+        'TableSession', on_delete=models.SET_NULL, null=True, blank=True, related_name='orders'
+    )
     customer = models.ForeignKey(
         Customer, on_delete=models.SET_NULL, null=True, blank=True, related_name='orders'
     )

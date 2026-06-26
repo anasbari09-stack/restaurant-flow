@@ -45,6 +45,20 @@ the FK is null (legacy or customer self-orders).
 - Pages: /serveur/login/ and /serveur/ (dashboard). Assisted ordering reuses the customer
   menu page via /menu/?table=<token>&assisted=1.
 
+## Table sessions (visits)
+- A TableSession represents one party's visit; Order.session FK groups a visit's orders (nullable=legacy).
+- Automated lazy lifecycle (no background jobs), evaluated on access:
+  - Scan (GET /api/table/?table=<token>) auto-opens or joins the table's open session and binds it to
+    the browser via the Django session cookie (visit_session_id). Hub shows only that session's orders.
+  - Auto-close: finished/empty session idle > 30 min, or hard cap 6 h; a finished session scanned by a
+    different/cookieless browser is handed off to a new party. Live (NEW/PREPARING/READY) sessions never idle-close.
+  - Manual override: POST /api/tables/<id>/close/ (serveur own tables, or admin) — buttons on the serveur
+    dashboard and admin tables page.
+- Customer writes (create/append order, help, cancel) require the browser to hold the table's current open
+  session, else HTTP 409 "session ended — scan again". Reads survive a close: track old order, review, loyalty.
+- Honest limit: a static public QR can't prove presence, so within the idle window a departed link could
+  still order; staff Close + the handoff heuristic minimize it. Full prevention is postponed (see below).
+
 ## Customer Table Hub
 - QR target is a per-table hub (page GET /?table=<token>; data GET /api/table/?table=<token>) with:
   browse menu / order, track current order, add more items, call serveur, leave review (when an order

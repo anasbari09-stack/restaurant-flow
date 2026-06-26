@@ -185,9 +185,13 @@ class OrderCreateSerializer(serializers.Serializer):
                      .filter(pk=order_id, table=data['table'])
                      .prefetch_related('items')
                      .first())
-            # Only append to a still-active order. A SERVED order is complete and
-            # a CANCELED order must not be revived — both fall back to a new order.
-            if order is not None and order.status not in ('SERVED', 'CANCELED'):
+            # Only append to a still-active order in the current visit. A SERVED
+            # order is complete, a CANCELED order must not be revived, and an
+            # order from a different/closed session must not be touched — all fall
+            # back to creating a new order in the current session.
+            session = self.context.get('session')
+            same_session = session is None or order is not None and order.session_id == session.id
+            if order is not None and order.status not in ('SERVED', 'CANCELED') and same_session:
                 data['append_order'] = order
         return data
 
@@ -220,6 +224,7 @@ class OrderCreateSerializer(serializers.Serializer):
                 server = acting_server or table.server
                 order = Order.objects.create(
                     table=table, customer=customer,
+                    session=self.context.get('session'),
                     server=server,
                     server_name=server.name if server else table.server_name,
                 )

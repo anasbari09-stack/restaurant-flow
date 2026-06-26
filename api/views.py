@@ -1,3 +1,4 @@
+from datetime import timedelta
 from decimal import Decimal
 
 from django.core.exceptions import ValidationError as DjangoValidationError
@@ -13,7 +14,7 @@ from rest_framework.authentication import SessionAuthentication
 from rest_framework.views import APIView
 from rest_framework.response import Response
 
-from core.models import Restaurant, Server, Table, MenuItem, Order, OrderItem, StaffPasscode, Customer, HelpAlert, Review
+from core.models import Restaurant, Server, Table, TableSession, MenuItem, Order, OrderItem, StaffPasscode, Customer, HelpAlert, Review
 from .serializers import (
     MenuItemSerializer, MenuItemAdminSerializer, TableAdminSerializer, ServerAdminSerializer,
     OrderCreateSerializer, OrderDetailSerializer,
@@ -22,6 +23,130 @@ from .serializers import (
 
 STATION_TO_CATEGORY = {'kitchen': 'food', 'drinks': 'drink', 'dessert': 'dessert'}
 NEXT_STATUS = {'NEW': 'PREPARING', 'PREPARING': 'READY', 'READY': 'SERVED'}
+
+# Table-session (visit) lifecycle — automated, lazy (evaluated on access).
+INACTIVITY_MINUTES = 30   # idle window after a meal is finished/empty
+HARD_CAP_HOURS = 6        # safety net for stuck/zombie sessions
+LIVE_ITEM_STATUSES = ('NEW', 'PREPARING', 'READY')
+VISIT_COOKIE_KEY = 'visit_session_id'
+
+
+def _session_has_live_items(session):
+    return OrderItem.objects.filter(
+        order__session=session, status__in=LIVE_ITEM_STATUSES
+    ).exists()
+
+
+def _expiry_reason(session, now):
+    """Why a session should be lazily closed, or None if it's still active."""
+    if now - session.opened_at > timedelta(hours=HARD_CAP_HOURS):
+        return 'auto-hardcap'
+    if not _session_has_live_items(session):
+        if now - session.last_activity_at > timedelta(minutes=INACTIVITY_MINUTES):
+            return 'auto-idle'
+    return None
+
+
+def _close_session(session, now, reason):
+    session.closed_at = now
+    session.closed_by = reason
+    session.save(update_fields=['closed_at', 'closed_by'])
+
+
+def _open_session(table, now):
+    # Guarantee at most one open session per table.
+    table.sessions.filter(closed_at__isnull=True).update(closed_at=now, closed_by='auto-cleanup')
+    return TableSession.objects.create(table=table, last_activity_at=now)
+
+
+def _bump(session, now):
+    session.last_activity_at = now
+    session.save(update_fields=['last_activity_at'])
+
+
+def current_session_for_read(table):
+    """Return the table's open session for read-only endpoints, applying lazy
+    expiry but never opening or reassigning (no cookie side effects)."""
+    now = timezone.now()
+    current = table.current_open_session()
+    if current and _expiry_reason(current, now):
+        _close_session(current, now, _expiry_reason(current, now))
+        return None
+    return current
+
+
+def get_or_open_session(table):
+    """For staff/assisted actions: the open session, or a fresh one. No cookie,
+    no new-party heuristic (staff presence is implied)."""
+    now = timezone.now()
+    current = table.current_open_session()
+    if current and _expiry_reason(current, now):
+        _close_session(current, now, _expiry_reason(current, now))
+        current = None
+    if current is None:
+        current = _open_session(table, now)
+    _bump(current, now)
+    return current
+
+
+def resolve_table_session(request, table):
+    """Customer scan entrypoint: apply expiry, run the new-party handoff
+    heuristic, open/join a session, bind it to this browser, bump activity."""
+    now = timezone.now()
+    current = table.current_open_session()
+    cookie_id = request.session.get(VISIT_COOKIE_KEY)
+
+    if current is not None and _expiry_reason(current, now):
+        _close_session(current, now, _expiry_reason(current, now))
+        current = None
+
+    if current is not None:
+        same_browser = (cookie_id == current.id)
+        finished_with_orders = (not _session_has_live_items(current)) and current.orders.exists()
+        # A finished session scanned by a different/cookieless browser is a new
+        # party taking the table — hand it off. Live or same-browser sessions and
+        # empty sessions are kept (a 2nd phone or a returning party joins).
+        if finished_with_orders and not same_browser:
+            _close_session(current, now, 'auto-newparty')
+            current = None
+
+    if current is None:
+        current = _open_session(table, now)
+
+    _bump(current, now)
+    request.session[VISIT_COOKIE_KEY] = current.id
+    return current
+
+
+def require_open_visit(request, table):
+    """Gate customer writes: the browser must hold the table's current open,
+    non-expired session. Returns the session, or None (caller responds 409)."""
+    now = timezone.now()
+    current = table.current_open_session()
+    if current is not None and _expiry_reason(current, now):
+        _close_session(current, now, _expiry_reason(current, now))
+        current = None
+    if current is None or request.session.get(VISIT_COOKIE_KEY) != current.id:
+        return None
+    _bump(current, now)
+    return current
+
+
+SESSION_ENDED = {
+    'error': 'This table session has ended. Please scan the QR code again to start a new order.',
+    'session_ended': True,
+}
+
+
+def _resolve_table(token):
+    """Look up a Table by qr_token, tolerating missing/invalid tokens."""
+    token = str(token or '').strip()
+    if not token:
+        return None
+    try:
+        return Table.objects.select_related('server').get(qr_token=token)
+    except (Table.DoesNotExist, ValueError, DjangoValidationError):
+        return None
 
 
 def get_current_server(request):
@@ -145,9 +270,13 @@ class TableHubView(APIView):
         else:
             server_name = table.server_name
 
+        # Resolve (auto-open / join / hand off) this browser's dining visit, then
+        # show only this session's orders so a new party never sees a prior one's.
+        session = resolve_table_session(request, table)
+
         orders = (
             Order.objects
-            .filter(table=table)
+            .filter(table=table, session=session)
             .prefetch_related('items', 'help_alerts')
             .select_related('review')
             .annotate(item_count=Count('items'))
@@ -216,12 +345,18 @@ class OrderCreateView(APIView):
             return Response({'error': 'table parameter is required.'}, status=400)
         try:
             table = Table.objects.get(qr_token=token)
-        except (Table.DoesNotExist, ValueError):
+        except (Table.DoesNotExist, ValueError, DjangoValidationError):
             return Response({'error': 'Invalid table token.'}, status=404)
+
+        # Scope "active orders at this table" to the current open visit so the
+        # tracking page's sibling list never mixes in a previous party's orders.
+        session = current_session_for_read(table)
+        if session is None:
+            return Response([])
 
         orders = (
             Order.objects
-            .filter(table=table)
+            .filter(table=table, session=session)
             .prefetch_related('items')
             .annotate(item_count=Count('items'))
             .order_by('-created_at')
@@ -243,7 +378,14 @@ class OrderCreateView(APIView):
         return Response(active)
 
     def post(self, request):
-        serializer = OrderCreateSerializer(data=request.data)
+        table = _resolve_table(request.data.get('table'))
+        if table is not None:
+            session = require_open_visit(request, table)
+            if session is None:
+                return Response(SESSION_ENDED, status=409)
+        else:
+            session = None  # invalid token — let the serializer return 400
+        serializer = OrderCreateSerializer(data=request.data, context={'session': session})
         if not serializer.is_valid():
             return Response(serializer.errors, status=400)
         order = serializer.save()
@@ -405,7 +547,12 @@ class ServeurOrderCreateView(APIView):
         server = get_current_server(request)
         if server is None:
             return Response({'error': 'Serveur login required.'}, status=401)
-        serializer = OrderCreateSerializer(data=request.data, context={'acting_server': server})
+        # Staff action: attach to the table's open visit (open one if needed),
+        # bypassing the customer cookie check — serveur presence is implied.
+        table = _resolve_table(request.data.get('table'))
+        session = get_or_open_session(table) if table is not None else None
+        serializer = OrderCreateSerializer(
+            data=request.data, context={'acting_server': server, 'session': session})
         if not serializer.is_valid():
             return Response(serializer.errors, status=400)
         order = serializer.save()
@@ -525,12 +672,17 @@ class OrderHelpAlertView(APIView):
 
     def post(self, request, pk):
         try:
-            order = Order.objects.get(pk=pk)
+            order = Order.objects.select_related('table').get(pk=pk)
         except Order.DoesNotExist:
             return Response({'error': 'Order not found.'}, status=404)
         kind = str(request.data.get('kind', 'call')).strip() or 'call'
         if kind not in ('call', 'cancel'):
             return Response({'error': 'Invalid kind.'}, status=400)
+
+        # Customer writes require this browser to hold the order's open visit.
+        session = require_open_visit(request, order.table)
+        if session is None or order.session_id != session.id:
+            return Response(SESSION_ENDED, status=409)
 
         if kind == 'cancel':
             return self._cancel(order)
@@ -595,6 +747,34 @@ class OrderCancelDecisionView(APIView):
         return Response({'decision': decision, 'order_status': order.status})
 
 
+class CloseTableSessionView(APIView):
+    """Manual override to end a table's current visit immediately (serveur for
+    their own tables, or admin for any). Automated expiry still handles the rest."""
+    authentication_classes = [EnforceCsrfAuthentication]
+    permission_classes = []
+
+    def post(self, request, pk):
+        try:
+            table = Table.objects.get(pk=pk)
+        except Table.DoesNotExist:
+            return Response({'error': 'Table not found.'}, status=404)
+
+        if request.session.get('staff_role') == 'admin':
+            closed_by = 'admin'
+        else:
+            server = get_current_server(request)
+            if server is None:
+                return Response({'error': 'Login required.'}, status=401)
+            if table.server_id != server.id:
+                return Response({'error': 'This table is not one of yours.'}, status=403)
+            closed_by = 'serveur:%s' % server.name
+
+        current = table.current_open_session()
+        if current is not None:
+            _close_session(current, timezone.now(), closed_by)
+        return Response({'closed': True})
+
+
 class TableHelpAlertView(APIView):
     """Table-level help alert from the Table Hub — lets a customer call the
     serveur before any order exists. Deduplicates on the open alert per table."""
@@ -602,16 +782,15 @@ class TableHelpAlertView(APIView):
     permission_classes = []
 
     def post(self, request):
-        token = str(request.data.get('table', '')).strip()
-        if not token:
-            return Response({'error': 'table is required.'}, status=400)
-        try:
-            table = Table.objects.get(qr_token=token)
-        except (Table.DoesNotExist, ValueError, DjangoValidationError):
+        table = _resolve_table(request.data.get('table'))
+        if table is None:
             return Response({'error': 'Invalid table token.'}, status=404)
         kind = str(request.data.get('kind', 'call')).strip() or 'call'
         if kind not in ('call', 'cancel'):
             return Response({'error': 'Invalid kind.'}, status=400)
+        # Bind to this browser's open visit so a departed/closed link can't ping staff.
+        if require_open_visit(request, table) is None:
+            return Response(SESSION_ENDED, status=409)
         alert, created = HelpAlert.objects.get_or_create(table=table, kind=kind, resolved=False)
         return Response({'id': alert.id, 'kind': alert.kind, 'created': created},
                         status=201 if created else 200)

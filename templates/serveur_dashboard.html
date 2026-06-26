@@ -220,14 +220,39 @@ function renderTables(tables) {
   }
   container.innerHTML = '';
   tables.forEach(t => {
+    const cell = document.createElement('div');
+    cell.className = 'bg-white border border-gray-200 rounded-xl px-3 py-3 text-center shadow-sm';
     const a = document.createElement('a');
     a.href = `/menu/?table=${encodeURIComponent(t.qr_token)}&assisted=1`;
-    a.className = 'bg-white border border-gray-200 hover:border-indigo-400 rounded-xl px-3 py-3 text-center shadow-sm transition-colors';
+    a.className = 'block hover:opacity-80 transition-opacity';
     a.innerHTML = `
       <p class="text-lg font-bold text-gray-900">Table ${t.number}</p>
       <p class="text-xs text-indigo-600 font-semibold mt-0.5">+ New order</p>`;
-    container.appendChild(a);
+    const close = document.createElement('button');
+    close.className = 'mt-2 text-[11px] font-semibold text-gray-400 hover:text-red-600 transition-colors';
+    close.textContent = 'Close table';
+    close.addEventListener('click', () => closeTable(t.id, t.number, close));
+    cell.append(a, close);
+    container.appendChild(cell);
   });
+}
+
+async function closeTable(tableId, number, btn) {
+  if (!confirm(`Close Table ${number}? This ends the current customer session.`)) return;
+  btn.disabled = true;
+  try {
+    const res = await fetch(`/api/tables/${tableId}/close/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
+      body: JSON.stringify({}),
+    });
+    if (res.status === 401) { window.location.href = '/serveur/login/'; return; }
+  } catch {
+    // ignore — polling resyncs
+  } finally {
+    btn.disabled = false;
+  }
+  fetchDashboard();
 }
 
 function renderOrders(orders) {

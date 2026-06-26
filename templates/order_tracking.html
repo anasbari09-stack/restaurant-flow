@@ -505,26 +505,47 @@ function renderSiblingOrders(orders) {
 
 // ── help ──────────────────────────────────────────────────────────────────────
 async function requestHelp() {
-  document.getElementById('help-btn').classList.add('hidden');
+  const btn = document.getElementById('help-btn'); btn.classList.add('hidden');
+  let res = null;
   try {
-    await fetch(`/api/orders/${orderId}/help/`, {
+    res = await fetch(`/api/orders/${orderId}/help/`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
       body: JSON.stringify({}),
     });
   } catch {}
-  document.getElementById('help-sent').classList.remove('hidden');
+  const sent = document.getElementById('help-sent');
+  if (res && res.ok) {
+    sent.textContent = "We've been notified — someone will be with you shortly.";
+    sent.className = 'text-center text-sm text-green-400 py-2 font-medium';
+  } else if (res && res.status === 409) {
+    sent.textContent = 'This table session has ended — please scan the QR code again.';
+    sent.className = 'text-center text-sm text-amber-300 py-2 font-medium';
+  } else {
+    sent.textContent = 'Could not send. Please try again.';
+    sent.className = 'text-center text-sm text-red-400 py-2 font-medium';
+    btn.classList.remove('hidden');
+  }
+  sent.classList.remove('hidden');
 }
 
 async function requestCancel() {
-  document.getElementById('cancel-btn').classList.add('hidden');
+  const btn = document.getElementById('cancel-btn'); btn.classList.add('hidden');
+  let res = null;
   try {
-    await fetch(`/api/orders/${orderId}/help/`, {
+    res = await fetch(`/api/orders/${orderId}/help/`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
       body: JSON.stringify({ kind: 'cancel' }),
     });
   } catch {}
+  if (res && res.status === 409) {
+    const sent = document.getElementById('cancel-sent');
+    sent.textContent = 'This table session has ended — please scan the QR code again.';
+    sent.className = 'text-center text-sm text-amber-300 py-2 font-medium';
+    sent.classList.remove('hidden');
+    return;
+  }
   // Re-fetch so the durable cancel_state (auto-canceled vs pending) drives the UI.
   fetchStatus();
 }

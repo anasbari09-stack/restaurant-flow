@@ -172,6 +172,7 @@ function buildRow(t) {
       </div>
       <div class="flex items-center gap-1.5 flex-shrink-0">
         <button data-act="copy" class="text-xs font-semibold px-2.5 py-1.5 rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors">Copy table link</button>
+        <button data-act="close" class="text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50 transition-colors">Close session</button>
         <button data-act="del" class="text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-red-300 text-red-600 hover:bg-red-50 transition-colors">Delete</button>
       </div>
     </div>
@@ -191,7 +192,26 @@ function buildRow(t) {
     }).catch(() => {});
   });
   row.querySelector('[data-act="del"]').addEventListener('click', () => deleteTable(t));
+  row.querySelector('[data-act="close"]').addEventListener('click', (e) => closeSession(t, e.target));
   return row;
+}
+
+// ── close current table session (manual override) ──────────────────────────────
+async function closeSession(t, btn) {
+  if (!confirm(`Close the current session at Table ${t.number}? The customer will need to scan again to start a new order.`)) return;
+  const old = btn.textContent; btn.disabled = true; btn.textContent = 'Closing…';
+  try {
+    const res = await fetch(`/api/tables/${t.id}/close/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
+      body: JSON.stringify({}),
+    });
+    if (!authGuard(res)) return;
+    btn.textContent = res.ok ? 'Closed ✓' : old;
+    setTimeout(() => { btn.textContent = old; btn.disabled = false; }, 1200);
+  } catch {
+    btn.textContent = old; btn.disabled = false;
+  }
 }
 
 // ── update server ─────────────────────────────────────────────────────────────
